@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚡ Daily Feeder Allocation</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0f1e;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --surface3: #1e2d47;
+    --accent: #f59e0b;
+    --accent2: #06b6d4;
+    --accent3: #10b981;
+    --danger: #ef4444;
+    --text: #f1f5f9;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --border: #1e3a5f;
+    --glow: 0 0 20px rgba(245,158,11,0.15);
+    --glow2: 0 0 20px rgba(6,182,212,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'IBM Plex Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(245,158,11,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245,158,11,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; }
+
+  /* ===== HEADER ===== */
+  header {
+    background: linear-gradient(135deg, #0d1526 0%, #0a1628 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  .header-left { display: flex; align-items: center; gap: 16px; }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .logo span { color: var(--text2); font-weight: 600; font-size: 14px; }
+
+  .date-display {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--accent2);
+    letter-spacing: 0.5px;
+  }
+
+  .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-transform: uppercase;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+  }
+  .btn-primary:hover { background: #fbbf24; transform: translateY(-1px); box-shadow: var(--glow); }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  .btn-success {
+    background: var(--accent3);
+    color: #000;
+  }
+  .btn-success:hover { background: #34d399; transform: translateY(-1px); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--danger);
+  }
+  .btn-danger:hover { background: var(--danger); color: #fff; }
+
+  .btn-cyan {
+    background: var(--accent2);
+    color: #000;
+  }
+  .btn-cyan:hover { background: #22d3ee; }
+
+  /* ===== MAIN LAYOUT ===== */
+  .main {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 0;
+    height: calc(100vh - 65px);
+    overflow: hidden;
+  }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--surface2);
+  }
+
+  .sidebar-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .upload-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg);
+  }
+
+  .upload-zone:hover {
+    border-color: var(--accent);
+    background: rgba(245,158,11,0.05);
+  }
+
+  .upload-zone.has-file {
+    border-color: var(--accent3);
+    background: rgba(16,185,129,0.05);
+  }
+
+  .upload-zone p { font-size: 11px; color: var(--text2); margin-top: 4px; }
+  .upload-zone .icon { font-size: 20px; }
+
+  .search-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-box:focus { border-color: var(--accent2); }
+  .search-box::placeholder { color: var(--text3); }
+
+  .pairs-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .pairs-scroll::-webkit-scrollbar { width: 4px; }
+  .pairs-scroll::-webkit-scrollbar-track { background: transparent; }
+  .pairs-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ===== PAIR CARD ===== */
+  .pair-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: grab;
+    transition: all 0.15s;
+    position: relative;
+    user-select: none;
+  }
+
+  .pair-card:active { cursor: grabbing; }
+
+  .pair-card:hover {
+    border-color: var(--accent2);
+    box-shadow: var(--glow2);
+    transform: translateX(2px);
+  }
+
+  .pair-card.dragging {
+    opacity: 0.4;
+    border-color: var(--accent);
+  }
+
+  .pair-card.assigned {
+    opacity: 0.45;
+    border-style: dashed;
+    cursor: default;
+  }
+
+  .pair-card.assigned:hover {
+    transform: none;
+    border-color: var(--border);
+    box-shadow: none;
+  }
+
+  .pair-num {
+    font-size: 9px;
+    color: var(--text3);
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .pair-names {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.4;
+  }
+
+  .pair-names .name2 { color: var(--text2); font-weight: 400; }
+
+  .pair-badge {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    font-size: 9px;
+    background: rgba(16,185,129,0.2);
+    color: var(--accent3);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 4px;
+    padding: 1px 5px;
+    letter-spacing: 0.5px;
+  }
+
+  .pair-count {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 4px;
+  }
+
+  /* ===== CONTENT AREA ===== */
+  .content {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .content-toolbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--border);
+  }
+
+  .input-sm {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-sm:focus { border-color: var(--accent); }
+
+  .board-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .board-scroll::-webkit-scrollbar { width: 6px; }
+  .board-scroll::-webkit-scrollbar-track { background: transparent; }
+  .board-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ===== VEHICLE SECTION ===== */
+  .vehicle-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .vehicle-header {
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .vehicle-header.bus { background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04)); }
+  .vehicle-header.sharon1 { background: linear-gradient(135deg, rgba(6,182,212,0.12), rgba(6,182,212,0.04)); }
+  .vehicle-header.sharon2 { background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.04)); }
+
+  .vehicle-info { display: flex; align-items: center; gap: 12px; }
+
+  .vehicle-icon {
+    font-size: 24px;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--surface2);
+  }
+
+  .vehicle-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .vehicle-meta {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: 2px;
+  }
+
+  .vehicle-cap {
+    font-size: 11px;
+    color: var(--text3);
+    text-align: right;
+  }
+
+  .vehicle-cap .cap-num {
+    font-size: 18px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    display: block;
+  }
+
+  .vehicle-cap .cap-num.over { color: var(--danger); }
+  .vehicle-cap .cap-num.ok { color: var(--accent3); }
+
+  .feeders-area {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* ===== FEEDER LANE ===== */
+  .feeder-lane {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .feeder-lane.drag-over {
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+    background: rgba(245,158,11,0.05);
+  }
+
+  .feeder-lane-header {
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(30,58,95,0.5);
+    background: rgba(0,0,0,0.2);
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .feeder-name-input {
+    background: transparent;
+    border: none;
+    color: var(--accent2);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    outline: none;
+    letter-spacing: 0.5px;
+    min-width: 120px;
+    max-width: 250px;
+    flex: 1;
+  }
+
+  .feeder-name-input::placeholder { color: var(--text3); }
+
+  .feeder-actions { display: flex; align-items: center; gap: 6px; }
+
+  .feeder-pairs-count {
+    font-size: 10px;
+    color: var(--text3);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+  }
+
+  .remove-feeder-btn {
+    background: transparent;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .remove-feeder-btn:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+
+  .feeder-drop-zone {
+    min-height: 60px;
+    padding: 10px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-start;
+    align-content: flex-start;
+  }
+
+  .feeder-drop-zone.empty {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .drop-hint {
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.5px;
+    pointer-events: none;
+  }
+
+  /* ===== ASSIGNED PAIR CHIP ===== */
+  .assigned-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: chipIn 0.2s ease;
+    max-width: 200px;
+  }
+
+  @keyframes chipIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+
+  .chip-names { flex: 1; line-height: 1.4; }
+  .chip-name1 { font-weight: 600; color: var(--text); }
+  .chip-name2 { color: var(--text2); font-size: 10px; }
+
+  .chip-remove {
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+  .chip-remove:hover { color: var(--danger); }
+
+  /* ===== ADD FEEDER BUTTON ===== */
+  .add-feeder-btn {
+    border: 1.5px dashed var(--border);
+    background: transparent;
+    border-radius: 8px;
+    padding: 10px;
+    width: 100%;
+    color: var(--text3);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .add-feeder-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(245,158,11,0.04); }
+
+  /* ===== UNASSIGNED NOTICE ===== */
+  .unassigned-bar {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 11px;
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ===== EMPTY STATE ===== */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 40px;
+    text-align: center;
+    color: var(--text3);
+  }
+
+  .empty-state .big-icon { font-size: 48px; opacity: 0.5; }
+  .empty-state h3 { font-family: 'Syne', sans-serif; font-size: 18px; color: var(--text2); }
+  .empty-state p { font-size: 12px; line-height: 1.6; max-width: 300px; }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    backdrop-filter: blur(4px);
+  }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    animation: modalIn 0.2s ease;
+  }
+
+  @keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(-10px); } to { opacity: 1; transform: none; } }
+
+  .modal-header {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface2);
+  }
+
+  .modal-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+
+  .modal-body::-webkit-scrollbar { width: 4px; }
+  .modal-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .output-section {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .output-section-header {
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .output-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .output-text {
+    padding: 14px;
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    background: var(--surface2);
+  }
+
+  /* ===== STATUS TOAST ===== */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--accent3);
+    color: #000;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 8px;
+    z-index: 2000;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--danger); color: #fff; }
+
+  /* ===== STATS BAR ===== */
+  .stats-bar {
+    display: flex;
+    gap: 16px;
+    padding: 10px 20px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .stat-item { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+  .stat-num { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; }
+  .stat-num.accent { color: var(--accent); }
+  .stat-num.cyan { color: var(--accent2); }
+  .stat-num.green { color: var(--accent3); }
+
+  /* ===== LOADING ===== */
+  .loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,15,30,0.8);
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== HIDDEN ===== */
+  .hidden { display: none !important; }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 768px) {
+    .main { grid-template-columns: 1fr; height: auto; overflow: visible; }
+    .sidebar { height: 300px; border-right: none; border-bottom: 1px solid var(--border); }
+    .content { height: calc(100vh - 65px - 300px); }
+  }
+
+  /* ===== DRAG GHOST ===== */
+  .drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    background: var(--surface2);
+    border: 1.5px solid var(--accent);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--text);
+    box-shadow: var(--glow);
+    opacity: 0.95;
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .vehicle-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- HEADER -->
+<header>
+  <div class="header-left">
+    <div class="logo">⚡ FEEDER ALLOCATOR <span>/ Daily Schedule</span></div>
+    <div class="date-display" id="dateDisplay">—</div>
+  </div>
+  <div class="header-right">
+    <input type="date" class="input-sm" id="scheduleDateInput" onchange="updateDateDisplay()">
+    <button class="btn btn-secondary" onclick="clearAll()">🗑 CLEAR</button>
+    <button class="btn btn-primary" onclick="previewWhatsApp()">📱 WHATSAPP</button>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SIDEBAR: Pairs -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">👥 Staff Pairs</div>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pairFile').click()">
+        <div class="icon">📋</div>
+        <p id="uploadStatus">Upload pairing file (.xlsx)</p>
+        <input type="file" id="pairFile" accept=".xlsx,.xls,.csv" class="hidden" onchange="handlePairsUpload(this)">
+      </div>
+      <input class="search-box" type="text" placeholder="🔍 search name..." oninput="filterPairs(this.value)">
+    </div>
+    <div class="pairs-scroll" id="pairsList">
+      <div class="empty-state" style="padding:30px 20px;">
+        <div class="big-icon" style="font-size:32px">📂</div>
+        <p style="font-size:11px;margin-top:8px;">Upload your pairing Excel file to begin</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENT: Board -->
+  <div class="content" id="contentArea">
+
+    <!-- EMPTY STATE -->
+    <div class="empty-state" id="emptyState">
+      <div class="big-icon">🚌</div>
+      <h3>No Schedule Yet</h3>
+      <p>Upload your pairs file on the left, then use the board to assign pairs to feeders per vehicle.</p>
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="initBoard()">⚡ START SCHEDULING</button>
+    </div>
+
+    <!-- BOARD (hidden until started) -->
+    <div id="boardArea" class="hidden" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+
+      <!-- STATS -->
+      <div class="stats-bar" id="statsBar">
+        <div class="stat-item"><span class="stat-num accent" id="statTotal">0</span> PAIRS TOTAL</div>
+        <div class="stat-item"><span class="stat-num green" id="statAssigned">0</span> ASSIGNED</div>
+        <div class="stat-item"><span class="stat-num cyan" id="statUnassigned">0</span> UNASSIGNED</div>
+        <div class="stat-item">🚌 BUS <span class="stat-num accent" id="statBus">0</span>/18</div>
+        <div class="stat-item">🚐 SHARON1 <span class="stat-num cyan" id="statS1">0</span>/8</div>
+        <div class="stat-item">🚐 SHARON2 <span class="stat-num green" id="statS2">0</span>/8</div>
+      </div>
+
+      <!-- TOOLBAR -->
+      <div class="content-toolbar">
+        <div class="toolbar-section">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;">Add Feeder to:</span>
+          <button class="btn btn-secondary" onclick="addFeeder('bus')">+ BUS</button>
+          <button class="btn btn-secondary" onclick="addFeeder('sharon1')">+ SHARON 1</button>
+          <button class="btn btn-secondary" onclick="addFeeder('sharon2')">+ SHARON 2</button>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-section">
+          <button class="btn btn-secondary" onclick="autoAssign()">🎲 AUTO-ASSIGN</button>
+          <button class="btn btn-secondary" onclick="resetAssignments()">↩ RESET</button>
+        </div>
+      </div>
+
+      <!-- BOARD SCROLL -->
+      <div class="board-scroll" id="boardScroll">
+        <!-- Vehicle sections rendered here -->
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- WHATSAPP MODAL -->
+<div class="modal-overlay hidden" id="waModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">📱 WhatsApp Schedule</div>
+      <button class="btn btn-secondary" onclick="closeModal()">✕ CLOSE</button>
+    </div>
+    <div class="modal-body" id="waModalBody">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="copyAll()">📋 COPY ALL</button>
+      <button class="btn btn-primary" onclick="closeModal()">✓ DONE</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- LOADING -->
+<div class="loading-overlay hidden" id="loadingOverlay">
+  <div class="spinner"></div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let allPairs = [];      // [{id, name1, name2}]
+let filteredPairs = [];
+let schedule = {
+  bus:     { feeders: [] },   // [{id, name, pairs:[pairId,...]}]
+  sharon1: { feeders: [] },
+  sharon2: { feeders: [] }
+};
+
+const VEHICLES = {
+  bus:     { label: '18-Seater Bus',   driver: 'Israel', capacity: 18, icon: '🚌', cls: 'bus' },
+  sharon1: { label: 'Sharon (8-Seat)', driver: 'Sam',    capacity: 8,  icon: '🚐', cls: 'sharon1' },
+  sharon2: { label: 'Sharon (8-Seat)', driver: 'Usman',  capacity: 8,  icon: '🚐', cls: 'sharon2' }
+};
+
+let feederCounter = 0;
+let dragPairId = null;
+let dragGhost = null;
+let boardStarted = false;
+
+// ============================================================
+// DATE
+// ============================================================
+function updateDateDisplay() {
+  const val = document.getElementById('scheduleDateInput').value;
+  if (!val) { document.getElementById('dateDisplay').textContent = '—'; return; }
+  const d = new Date(val + 'T12:00:00');
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('dateDisplay').textContent =
+    `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Set today as default
+window.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('scheduleDateInput').value = today;
+  updateDateDisplay();
+});
+
+// ============================================================
+// XLSX UPLOAD
+// ============================================================
+function handlePairsUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      allPairs = [];
+      let pairId = 1;
+
+      // Auto-detect: try to find columns with names
+      // Strategy: look at first row — if it's a header skip it, else start from row 0
+      // We expect 2 name columns. Try col 0+1 or col 1+2 etc.
+      let startRow = 0;
+      let col1 = 0, col2 = 1;
+
+      // Check if first row looks like a header (contains text like "name", "staff", "pair")
+      if (rows.length > 0) {
+        const firstRow = rows[0].map(c => String(c).toLowerCase());
+        const headerWords = ['name','staff','pair','person','member','enumerator','field'];
+        if (firstRow.some(c => headerWords.some(w => c.includes(w)))) {
+          startRow = 1;
+          // Try to find which columns have the names
+          // First non-empty/non-number column
+          firstRow.forEach((c, i) => {
+            if (headerWords.some(w => c.includes(w))) {
+              if (col1 === 0 && i >= 0) col1 = i;
+              else if (col2 <= 1 && i > col1) col2 = i;
+            }
+          });
+        }
+      }
+
+      for (let i = startRow; i < rows.length; i++) {
+        const row = rows[i];
+        const n1 = String(row[col1] || '').trim();
+        const n2 = String(row[col2] || '').trim();
+        if (!n1 && !n2) continue;
+        if (n1 || n2) {
+          allPairs.push({ id: pairId++, name1: n1 || '—', name2: n2 || '—' });
+        }
+      }
+
+      // Update upload zone
+      document.getElementById('uploadZone').classList.add('has-file');
+      document.getElementById('uploadStatus').innerHTML =
+        `<span style="color:var(--accent3)">✓ ${file.name}</span><br>${allPairs.length} pairs loaded`;
+
+      filteredPairs = [...allPairs];
+      renderPairsList();
+      showToast(`✓ ${allPairs.length} pairs loaded`);
+
+      // Auto-show board if not started
+      if (!boardStarted) initBoard();
+
+    } catch(err) {
+      showToast('Failed to read file: ' + err.message, true);
+    }
+    document.getElementById('loadingOverlay').classList.add('hidden');
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ============================================================
+// PAIRS LIST
+// ============================================================
+function renderPairsList() {
+  const container = document.getElementById('pairsList');
+  const assignedIds = getAssignedPairIds();
+
+  if (!filteredPairs.length) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;font-size:11px;color:var(--text3);">No pairs found</div>';
+    return;
+  }
+
+  container.innerHTML = filteredPairs.map(p => {
+    const isAssigned = assignedIds.has(p.id);
+    return `<div class="pair-card ${isAssigned ? 'assigned' : ''}"
+      id="pair-${p.id}"
+      draggable="${!isAssigned}"
+      ondragstart="onDragStart(event, ${p.id})"
+      ondragend="onDragEnd(event)">
+      <div class="pair-num">PAIR ${String(p.id).padStart(2,'0')}</div>
+      <div class="pair-names">
+        ${escHtml(p.name1)}<br>
+        <span class="name2">${escHtml(p.name2)}</span>
+      </div>
+      ${isAssigned ? '<div class="pair-badge">ASSIGNED</div>' : ''}
+    </div>`;
+  }).join('');
+}
+
+function filterPairs(query) {
+  const q = query.toLowerCase().trim();
+  filteredPairs = q
+    ? allPairs.filter(p =>
+        p.name1.toLowerCase().includes(q) ||
+        p.name2.toLowerCase().includes(q) ||
+        String(p.id).includes(q))
+    : [...allPairs];
+  renderPairsList();
+}
+
+function getAssignedPairIds() {
+  const ids = new Set();
+  Object.values(schedule).forEach(v =>
+    v.feeders.forEach(f =>
+      f.pairs.forEach(pid => ids.add(pid))
+    )
+  );
+  return ids;
+}
+
+// ============================================================
+// BOARD
+// ============================================================
+function initBoard() {
+  boardStarted = true;
+  document.getElementById('emptyState').classList.add('hidden');
+  const boardArea = document.getElementById('boardArea');
+  boardArea.classList.remove('hidden');
+  boardArea.style.display = 'flex';
+
+  // Render all 3 vehicles
+  renderBoard();
+}
+
+function renderBoard() {
+  if (!boardStarted) return;
+  const container = document.getElementById('boardScroll');
+  container.innerHTML = Object.entries(VEHICLES).map(([vKey, v]) => {
+    const vData = schedule[vKey];
+    const assignedCount = vData.feeders.reduce((s, f) => s + f.pairs.length * 2, 0); // 2 per pair approx
+    const pairCount = vData.feeders.reduce((s, f) => s + f.pairs.length, 0);
+    const isOver = assignedCount > v.capacity;
+
+    return `<div class="vehicle-section">
+      <div class="vehicle-header ${v.cls}">
+        <div class="vehicle-info">
+          <div class="vehicle-icon">${v.icon}</div>
+          <div>
+            <div class="vehicle-name">${v.label}</div>
+            <div class="vehicle-meta">Driver: <strong>${v.driver}</strong></div>
+          </div>
+        </div>
+        <div class="vehicle-header-actions">
+          <div class="vehicle-cap">
+            <span class="cap-num ${isOver ? 'over' : 'ok'}">${pairCount} pairs</span>
+            <span>of ${v.capacity} seats</span>
+          </div>
+          <button class="btn btn-secondary" style="font-size:10px;padding:5px 10px;" onclick="addFeeder('${vKey}')">+ FEEDER</button>
+        </div>
+      </div>
+      <div class="feeders-area" id="feeders-${vKey}">
+        ${vData.feeders.length === 0
+          ? `<div style="padding:12px;text-align:center;font-size:11px;color:var(--text3);">No feeders added. Click "+ FEEDER" to add one, then drag pairs here.</div>`
+          : vData.feeders.map(f => renderFeederLane(vKey, f)).join('')
+        }
+        <button class="add-feeder-btn" onclick="addFeeder('${vKey}')">+ Add Feeder</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  updateStats();
+}
+
+function renderFeederLane(vKey, feeder) {
+  const pairs = feeder.pairs.map(pid => allPairs.find(p => p.id === pid)).filter(Boolean);
+  return `<div class="feeder-lane" id="lane-${feeder.id}"
+    ondragover="onDragOver(event, '${feeder.id}')"
+    ondragleave="onDragLeave(event, '${feeder.id}')"
+    ondrop="onDrop(event, '${vKey}', '${feeder.id}')">
+    <div class="feeder-lane-header">
+      <input class="feeder-name-input" type="text"
+        placeholder="Feeder name (e.g. Gwagwalada 33kV)"
+        value="${escHtml(feeder.name)}"
+        onchange="updateFeederName('${feeder.id}', this.value)"
+        oninput="updateFeederName('${feeder.id}', this.value)">
+      <div class="feeder-actions">
+        <span class="feeder-pairs-count">${pairs.length} pair${pairs.length !== 1 ? 's' : ''}</span>
+        <button class="remove-feeder-btn" onclick="removeFeeder('${vKey}', '${feeder.id}')" title="Remove feeder">✕</button>
+      </div>
+    </div>
+    <div class="feeder-drop-zone ${pairs.length === 0 ? 'empty' : ''}" id="dropzone-${feeder.id}">
+      ${pairs.length === 0
+        ? '<span class="drop-hint">⇢ drag pairs here</span>'
+        : pairs.map(p => `
+          <div class="assigned-chip">
+            <div class="chip-names">
+              <div class="chip-name1">${escHtml(p.name1)}</div>
+              <div class="chip-name2">${escHtml(p.name2)}</div>
+            </div>
+            <button class="chip-remove" onclick="unassignPair(${p.id}, '${feeder.id}')" title="Remove">✕</button>
+          </div>`).join('')
+      }
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// FEEDER MANAGEMENT
+// ============================================================
+function addFeeder(vKey) {
+  if (!boardStarted) initBoard();
+  feederCounter++;
+  schedule[vKey].feeders.push({ id: `f${feederCounter}`, name: '', pairs: [] });
+  renderBoard();
+  // Focus the new feeder name input
+  setTimeout(() => {
+    const inputs = document.querySelectorAll(`#feeders-${vKey} .feeder-name-input`);
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }, 50);
+}
+
+function removeFeeder(vKey, fId) {
+  const feeder = schedule[vKey].feeders.find(f => f.id === fId);
+  if (feeder && feeder.pairs.length > 0) {
+    if (!confirm(`Remove this feeder? ${feeder.pairs.length} pair(s) will be unassigned.`)) return;
+  }
+  schedule[vKey].feeders = schedule[vKey].feeders.filter(f => f.id !== fId);
+  renderBoard();
+  renderPairsList();
+}
+
+function updateFeederName(fId, name) {
+  Object.values(schedule).forEach(v => {
+    const f = v.feeders.find(x => x.id === fId);
+    if (f) f.name = name;
+  });
+  // Don't re-render (would lose focus) — just update stats
+  updateStats();
+}
+
+function unassignPair(pairId, fId) {
+  Object.values(schedule).forEach(v => {
+    v.feeders.forEach(f => {
+      if (f.id === fId) f.pairs = f.pairs.filter(id => id !== pairId);
+    });
+  });
+  renderBoard();
+  renderPairsList();
+}
+
+function resetAssignments() {
+  if (!confirm('Clear all feeder assignments?')) return;
+  Object.values(schedule).forEach(v => v.feeders.forEach(f => f.pairs = []));
+  renderBoard();
+  renderPairsList();
+}
+
+function clearAll() {
+  if (!confirm('Clear everything?')) return;
+  schedule = { bus: { feeders: [] }, sharon1: { feeders: [] }, sharon2: { feeders: [] } };
+  allPairs = []; filteredPairs = [];
+  boardStarted = false;
+  document.getElementById('pairsList').innerHTML = '<div class="empty-state" style="padding:30px 20px;"><div class="big-icon" style="font-size:32px">📂</div><p style="font-size:11px;margin-top:8px;">Upload your pairing Excel file to begin</p></div>';
+  document.getElementById('uploadZone').classList.remove('has-file');
+  document.getElementById('uploadStatus').textContent = 'Upload pairing file (.xlsx)';
+  document.getElementById('emptyState').classList.remove('hidden');
+  document.getElementById('boardArea').classList.add('hidden');
+}
+
+// ============================================================
+// AUTO-ASSIGN
+// ============================================================
+function autoAssign() {
+  const unassigned = allPairs.filter(p => !getAssignedPairIds().has(p.id));
+  if (!unassigned.length) { showToast('All pairs already assigned'); return; }
+
+  // Get all available feeder lanes across vehicles
+  const lanes = [];
+  Object.entries(schedule).forEach(([vKey, v]) => {
+    v.feeders.forEach(f => lanes.push({ vKey, feeder: f }));
+  });
+
+  if (!lanes.length) {
+    showToast('Add some feeder lanes first', true);
+    return;
+  }
+
+  // Distribute pairs evenly across lanes
+  let i = 0;
+  unassigned.forEach(p => {
+    lanes[i % lanes.length].feeder.pairs.push(p.id);
+    i++;
+  });
+
+  renderBoard();
+  renderPairsList();
+  showToast(`✓ ${unassigned.length} pairs auto-assigned`);
+}
+
+// ============================================================
+// DRAG AND DROP
+// ============================================================
+function onDragStart(event, pairId) {
+  dragPairId = pairId;
+  const pair = allPairs.find(p => p.id === pairId);
+  event.dataTransfer.effectAllowed = 'move';
+
+  // Create ghost
+  dragGhost = document.createElement('div');
+  dragGhost.className = 'drag-ghost';
+  dragGhost.textContent = `${pair.name1} / ${pair.name2}`;
+  document.body.appendChild(dragGhost);
+  event.dataTransfer.setDragImage(dragGhost, 0, 0);
+
+  setTimeout(() => {
+    document.getElementById(`pair-${pairId}`)?.classList.add('dragging');
+  }, 0);
+}
+
+function onDragEnd(event) {
+  dragPairId = null;
+  if (dragGhost) { dragGhost.remove(); dragGhost = null; }
+  document.querySelectorAll('.pair-card.dragging').forEach(el => el.classList.remove('dragging'));
+  document.querySelectorAll('.feeder-lane.drag-over').forEach(el => el.classList.remove('drag-over'));
+}
+
+function onDragOver(event, fId) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  document.getElementById(`lane-${fId}`)?.classList.add('drag-over');
+}
+
+function onDragLeave(event, fId) {
+  // Only remove if we're actually leaving the lane
+  const lane = document.getElementById(`lane-${fId}`);
+  if (lane && !lane.contains(event.relatedTarget)) {
+    lane.classList.remove('drag-over');
+  }
+}
+
+function onDrop(event, vKey, fId) {
+  event.preventDefault();
+  document.getElementById(`lane-${fId}`)?.classList.remove('drag-over');
+
+  if (!dragPairId) return;
+
+  // Remove from any existing location
+  Object.values(schedule).forEach(v =>
+    v.feeders.forEach(f => { f.pairs = f.pairs.filter(id => id !== dragPairId); })
+  );
+
+  // Add to target feeder
+  const feeder = schedule[vKey].feeders.find(f => f.id === fId);
+  if (feeder && !feeder.pairs.includes(dragPairId)) {
+    feeder.pairs.push(dragPairId);
+  }
+
+  renderBoard();
+  renderPairsList();
+}
+
+// ============================================================
+// STATS
+// ============================================================
+function updateStats() {
+  const total = allPairs.length;
+  const assignedIds = getAssignedPairIds();
+  const assigned = assignedIds.size;
+
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statAssigned').textContent = assigned;
+  document.getElementById('statUnassigned').textContent = total - assigned;
+  document.getElementById('statBus').textContent = schedule.bus.feeders.reduce((s,f)=>s+f.pairs.length,0);
+  document.getElementById('statS1').textContent = schedule.sharon1.feeders.reduce((s,f)=>s+f.pairs.length,0);
+  document.getElementById('statS2').textContent = schedule.sharon2.feeders.reduce((s,f)=>s+f.pairs.length,0);
+}
+
+// ============================================================
+// WHATSAPP OUTPUT
+// ============================================================
+function getDateString() {
+  const val = document.getElementById('scheduleDateInput').value;
+  if (!val) return 'Today';
+  const d = new Date(val + 'T12:00:00');
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function buildWhatsAppText(vKey, includeHeader = true) {
+  const v = VEHICLES[vKey];
+  const vData = schedule[vKey];
+  const dateStr = getDateString();
+  let lines = [];
+
+  if (includeHeader) {
+    lines.push(`📅 *GIS ENUMERATION SCHEDULE*`);
+    lines.push(`🗓 ${dateStr}`);
+    lines.push('');
+  }
+
+  lines.push(`${v.icon} *${v.label.toUpperCase()} — DRIVER: ${v.driver}*`);
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━');
+
+  if (vData.feeders.length === 0) {
+    lines.push('_(No feeders assigned)_');
+  } else {
+    vData.feeders.forEach((f, fi) => {
+      const feederName = f.name || `Feeder ${fi + 1}`;
+      lines.push('');
+      lines.push(`⚡ *${feederName.toUpperCase()}*`);
+
+      if (f.pairs.length === 0) {
+        lines.push('  _(No pairs assigned)_');
+      } else {
+        f.pairs.forEach((pid, pi) => {
+          const pair = allPairs.find(p => p.id === pid);
+          if (pair) {
+            lines.push(`  ${pi + 1}. ${pair.name1} & ${pair.name2}`);
+          }
+        });
+      }
+    });
+  }
+
+  lines.push('');
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━');
+  const pairCount = vData.feeders.reduce((s,f)=>s+f.pairs.length,0);
+  lines.push(`👥 Total: ${pairCount} pair${pairCount !== 1 ? 's' : ''} (${pairCount * 2} staff)`);
+
+  return lines.join('\n');
+}
+
+function buildCombinedText() {
+  const dateStr = getDateString();
+  let lines = [];
+  lines.push(`📅 *GIS ENUMERATION & ASSET MAPPING — DAILY SCHEDULE*`);
+  lines.push(`🗓 ${dateStr}`);
+  lines.push('');
+  lines.push('═══════════════════════════════');
+  lines.push('');
+
+  Object.entries(VEHICLES).forEach(([vKey, _]) => {
+    lines.push(buildWhatsAppText(vKey, false));
+    lines.push('');
+  });
+
+  const assignedCount = getAssignedPairIds().size;
+  const unassigned = allPairs.filter(p => !getAssignedPairIds().has(p.id));
+  lines.push('═══════════════════════════════');
+  lines.push(`📊 *TOTAL DEPLOYED: ${assignedCount} pairs (${assignedCount * 2} staff)*`);
+  if (unassigned.length > 0) {
+    lines.push(`⚠️ *UNASSIGNED: ${unassigned.length} pairs*`);
+    unassigned.forEach(p => lines.push(`  • ${p.name1} & ${p.name2}`));
+  }
+
+  return lines.join('\n');
+}
+
+function previewWhatsApp() {
+  const modal = document.getElementById('waModal');
+  const body = document.getElementById('waModalBody');
+
+  const combinedText = buildCombinedText();
+
+  let html = `
+    <div class="output-section">
+      <div class="output-section-header">
+        <span class="output-section-title">📋 Full Schedule (All Vehicles)</span>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px;" onclick="copyText('combined')">📋 COPY</button>
+      </div>
+      <div class="output-text" id="out-combined">${escHtml(combinedText)}</div>
+    </div>`;
+
+  Object.entries(VEHICLES).forEach(([vKey, v]) => {
+    const txt = buildWhatsAppText(vKey, true);
+    html += `
+    <div class="output-section">
+      <div class="output-section-header">
+        <span class="output-section-title">${v.icon} ${v.label} — ${v.driver}</span>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px;" onclick="copyText('${vKey}')">📋 COPY</button>
+      </div>
+      <div class="output-text" id="out-${vKey}">${escHtml(txt)}</div>
+    </div>`;
+  });
+
+  body.innerHTML = html;
+  modal.classList.remove('hidden');
+
+  // Store texts for copy
+  window._waTexts = { combined: combinedText };
+  Object.keys(VEHICLES).forEach(vKey => {
+    window._waTexts[vKey] = buildWhatsAppText(vKey, true);
+  });
+}
+
+function copyText(key) {
+  const text = window._waTexts?.[key] || document.getElementById(`out-${key}`)?.textContent || '';
+  navigator.clipboard.writeText(text).then(() => showToast('✓ Copied to clipboard!'));
+}
+
+function copyAll() {
+  const text = window._waTexts?.combined || '';
+  navigator.clipboard.writeText(text).then(() => showToast('✓ Full schedule copied!'));
+}
+
+function closeModal() {
+  document.getElementById('waModal').classList.add('hidden');
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function escHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast show${isError ? ' error' : ''}`;
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => { t.classList.remove('show'); }, 2800);
+}
+</script>
+</body>
+</html>

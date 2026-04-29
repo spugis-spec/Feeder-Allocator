@@ -30,11 +30,37 @@ window.__fbOps = { doc, setDoc, getDoc, getDocs, collection, query, orderBy, del
 onAuthStateChanged(auth, async user => {
   if (user) {
     try {
-      const snap = await getDoc(doc(db,'users',user.uid));
-      window.__currentUser = { uid:user.uid, email:user.email, role: snap.exists()?(snap.data().role||'viewer'):'viewer' };
-    } catch(e) { window.__currentUser = { uid:user.uid, email:user.email, role:'viewer' }; }
-  } else { window.__currentUser = null; }
-  window.dispatchEvent(new CustomEvent('auth-changed',{detail:window.__currentUser}));
+      const userRef = doc(db, 'users', user.uid);
+      let snap = await getDoc(userRef);
+
+      // 🔥 AUTO CREATE USER IF NOT EXIST
+      if (!snap.exists()) {
+        await setDoc(userRef, {
+          role: 'editor' // you can change to 'viewer' if you want stricter control
+        });
+        snap = await getDoc(userRef);
+      }
+
+      window.__currentUser = {
+        uid: user.uid,
+        email: user.email,
+        role: snap.data().role || 'viewer'
+      };
+
+    } catch (e) {
+      window.__currentUser = {
+        uid: user.uid,
+        email: user.email,
+        role: 'viewer'
+      };
+    }
+  } else {
+    window.__currentUser = null;
+  }
+
+  window.dispatchEvent(new CustomEvent('auth-changed', {
+    detail: window.__currentUser
+  }));
 });
 window.dispatchEvent(new Event('firebase-ready'));
 </script>

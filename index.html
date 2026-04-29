@@ -3,1446 +3,1136 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>⚡ Daily Feeder Allocation</title>
+<title>⚡ Feeder Allocator</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- Firebase SDK -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, orderBy, deleteDoc }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-  // ── PASTE YOUR FIREBASE CONFIG HERE ──────────────────────────
-  const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
-  };
-  // ─────────────────────────────────────────────────────────────
-
-  const app  = initializeApp(firebaseConfig);
-  const db   = getFirestore(app);
-
-  window.__db = db;
-  window.__fsOps = { doc, setDoc, getDoc, getDocs, collection, query, orderBy, deleteDoc };
-  window.dispatchEvent(new Event('firebase-ready'));
+// ── PASTE YOUR FIREBASE CONFIG HERE ────────────────────────
+const firebaseConfig = {
+  apiKey:            "AIzaSyDMEJfFu3OpNBAwa6wc0ezcLIZhwxGU2pw",
+  authDomain:        "spugis.firebaseapp.com",
+  projectId:         "spugis",
+  storageBucket:     "spugis.firebasestorage.app",
+  messagingSenderId: "295940607308",
+  appId:             "1:295940607308:web:d70c91d0b2ebbb7b1d13e9"
+};
+// ────────────────────────────────────────────────────────────
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+window.__auth  = auth;
+window.__db    = db;
+window.__fbOps = { doc, setDoc, getDoc, getDocs, collection, query, orderBy, deleteDoc,
+                   signInWithEmailAndPassword, signOut };
+onAuthStateChanged(auth, async user => {
+  if (user) {
+    try {
+      const snap = await getDoc(doc(db,'users',user.uid));
+      window.__currentUser = { uid:user.uid, email:user.email, role: snap.exists()?(snap.data().role||'viewer'):'viewer' };
+    } catch(e) { window.__currentUser = { uid:user.uid, email:user.email, role:'viewer' }; }
+  } else { window.__currentUser = null; }
+  window.dispatchEvent(new CustomEvent('auth-changed',{detail:window.__currentUser}));
+});
+window.dispatchEvent(new Event('firebase-ready'));
 </script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-
-:root {
-  --bg:#0a0f1e; --surface:#111827; --surface2:#1a2235; --surface3:#1e2d47;
-  --accent:#f59e0b; --accent2:#06b6d4; --accent3:#10b981; --danger:#ef4444;
-  --warn:#f97316;
-  --text:#f1f5f9; --text2:#94a3b8; --text3:#64748b;
-  --border:#1e3a5f;
-  --glow:0 0 20px rgba(245,158,11,.15); --glow2:0 0 20px rgba(6,182,212,.15);
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+:root{
+  --bg:#070c18;--bg2:#0a1020;--sf:#0f1828;--sf2:#152035;--sf3:#1a2840;
+  --acc:#f59e0b;--c2:#06b6d4;--c3:#10b981;--cr:#ef4444;--cw:#f97316;--cp:#8b5cf6;
+  --tx:#e8f0fe;--tx2:#8899bb;--tx3:#4a5a7a;--bd:#1a2e50;--bd2:#243656;
+  --gy:0 0 24px rgba(245,158,11,.18);--gc:0 0 24px rgba(6,182,212,.18);
+  --gg:0 0 24px rgba(16,185,129,.18);--gr:0 0 24px rgba(239,68,68,.22);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'IBM Plex Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
-body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(245,158,11,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(245,158,11,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
-.app{position:relative;z-index:1;}
+html,body{height:100%;}
+body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--tx);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(6,182,212,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(6,182,212,.022) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0;}
+.app{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column;}
+
+/* LOGIN */
+#loginScreen{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 40%,#0d1e3a 0%,#070c18 70%);}
+.lcard{width:380px;max-width:94vw;background:var(--sf);border:1px solid var(--bd2);border-radius:20px;padding:38px 34px;box-shadow:0 30px 80px rgba(0,0,0,.65),var(--gc);animation:sU .4s cubic-bezier(.16,1,.3,1);}
+@keyframes sU{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
+.llogo{font-family:'Syne',sans-serif;font-weight:900;font-size:24px;color:var(--acc);letter-spacing:-1px;margin-bottom:4px;display:flex;align-items:center;gap:9px;}
+.lsub{font-size:10px;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:28px;}
+.lfield{margin-bottom:14px;}
+.llabel{font-size:10px;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5px;display:block;}
+.linput{width:100%;background:var(--bg2);border:1.5px solid var(--bd);border-radius:8px;padding:11px 13px;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;transition:all .2s;}
+.linput:focus{border-color:var(--c2);box-shadow:0 0 0 3px rgba(6,182,212,.1);}
+.lbtn{width:100%;background:var(--acc);color:#000;border:none;border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s;margin-top:6px;}
+.lbtn:hover{background:#fbbf24;transform:translateY(-1px);box-shadow:var(--gy);}
+.lbtn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.lerr{font-size:11px;color:#fca5a5;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:6px;padding:8px 12px;margin-top:8px;display:none;}
+.lerr.show{display:block;}
+.ldiv{border:none;border-top:1px solid var(--bd);margin:18px 0;}
+.vbtn{width:100%;background:transparent;color:var(--tx2);border:1px solid var(--bd);border-radius:8px;padding:9px;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:all .2s;}
+.vbtn:hover{border-color:var(--c2);color:var(--c2);}
+
+/* VIEWER BANNER */
+.vbanner{background:linear-gradient(90deg,rgba(139,92,246,.15),rgba(139,92,246,.05));border-bottom:2px solid rgba(139,92,246,.4);padding:7px 20px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#c4b5fd;letter-spacing:.5px;}
 
 /* HEADER */
-header{background:linear-gradient(135deg,#0d1526,#0a1628);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:100;box-shadow:0 4px 24px rgba(0,0,0,.4);}
-.header-left{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
-.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;color:var(--accent);letter-spacing:-.5px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
-.logo span{color:var(--text2);font-weight:600;font-size:13px;}
-.date-display{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-size:11px;color:var(--accent2);letter-spacing:.5px;}
-.firebase-status{font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid;letter-spacing:.5px;}
-.firebase-status.connected{color:var(--accent3);border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.08);}
-.firebase-status.disconnected{color:var(--text3);border-color:var(--border);background:var(--surface2);}
-.header-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+header{background:linear-gradient(135deg,#0c1525,#091220);border-bottom:1px solid var(--bd);padding:11px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:100;box-shadow:0 4px 28px rgba(0,0,0,.5);}
+.hleft{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.hlogo{font-family:'Syne',sans-serif;font-weight:900;font-size:15px;color:var(--acc);letter-spacing:-.5px;display:flex;align-items:center;gap:7px;white-space:nowrap;}
+.hlogo small{color:var(--tx3);font-weight:600;font-size:10px;}
+.dchip{background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--c2);letter-spacing:.5px;}
+.fbstat{font-size:9px;padding:3px 8px;border-radius:5px;border:1px solid;}
+.fbstat.on{color:var(--c3);border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.08);}
+.fbstat.off{color:var(--tx3);border-color:var(--bd);}
+.hright{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.uchip{background:var(--sf2);border:1px solid var(--bd2);border-radius:6px;padding:4px 10px;font-size:10px;letter-spacing:.5px;display:flex;align-items:center;gap:6px;}
+.rbadge{font-size:9px;font-weight:700;border-radius:4px;padding:1px 6px;letter-spacing:.5px;}
+.rbadge.admin{background:rgba(245,158,11,.2);color:var(--acc);border:1px solid rgba(245,158,11,.3);}
+.rbadge.editor{background:rgba(6,182,212,.2);color:var(--c2);border:1px solid rgba(6,182,212,.3);}
+.rbadge.viewer{background:rgba(139,92,246,.2);color:#c4b5fd;border:1px solid rgba(139,92,246,.3);}
 
 /* BUTTONS */
-.btn{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;padding:7px 14px;border-radius:6px;border:none;cursor:pointer;transition:all .2s;letter-spacing:.5px;white-space:nowrap;display:flex;align-items:center;gap:5px;text-transform:uppercase;}
-.btn-primary{background:var(--accent);color:#000;}
-.btn-primary:hover{background:#fbbf24;transform:translateY(-1px);box-shadow:var(--glow);}
-.btn-secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border);}
-.btn-secondary:hover{border-color:var(--accent2);color:var(--accent2);}
-.btn-success{background:var(--accent3);color:#000;}
-.btn-success:hover{background:#34d399;}
-.btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger);}
-.btn-danger:hover{background:var(--danger);color:#fff;}
-.btn-warn{background:var(--warn);color:#000;}
-.btn-warn:hover{background:#fb923c;}
-.btn-cyan{background:var(--accent2);color:#000;}
-.btn-cyan:hover{background:#22d3ee;}
-.btn-purple{background:#8b5cf6;color:#fff;}
-.btn-purple:hover{background:#a78bfa;}
+.btn{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:7px 12px;border-radius:6px;border:none;cursor:pointer;transition:all .2s;letter-spacing:.5px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;text-transform:uppercase;}
+.btn:disabled{opacity:.32;cursor:not-allowed!important;pointer-events:none;}
+.by{background:var(--acc);color:#000;} .by:hover{background:#fbbf24;transform:translateY(-1px);box-shadow:var(--gy);}
+.bc{background:var(--c2);color:#000;} .bc:hover{background:#22d3ee;}
+.bg{background:var(--c3);color:#000;} .bg:hover{background:#34d399;}
+.br{background:transparent;color:var(--cr);border:1px solid var(--cr);} .br:hover{background:var(--cr);color:#fff;}
+.bp{background:var(--cp);color:#fff;} .bp:hover{background:#a78bfa;}
+.bh{background:var(--sf2);color:var(--tx2);border:1px solid var(--bd);} .bh:hover{border-color:var(--c2);color:var(--c2);}
+.bw{background:var(--cw);color:#000;} .bw:hover{background:#fb923c;}
+.sm{padding:5px 9px;font-size:9px;}
 
 /* LAYOUT */
-.main{display:grid;grid-template-columns:310px 1fr;gap:0;height:calc(100vh - 61px);overflow:hidden;}
+.main{display:grid;grid-template-columns:298px 1fr;flex:1;overflow:hidden;}
+.sidebar{background:var(--sf);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;}
+.sbhd{padding:11px;border-bottom:1px solid var(--bd);display:flex;flex-direction:column;gap:7px;background:var(--sf2);}
+.sbttl{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--acc);letter-spacing:2px;text-transform:uppercase;}
+.uz{border:1.5px dashed var(--bd);border-radius:8px;padding:10px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg2);}
+.uz:hover{border-color:var(--acc);background:rgba(245,158,11,.04);}
+.uz.hf{border-color:var(--c3);background:rgba(16,185,129,.04);}
+.uz p{font-size:10px;color:var(--tx2);margin-top:3px;}
+.sbox{background:var(--bg2);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:11px;width:100%;outline:none;transition:border-color .2s;}
+.sbox:focus{border-color:var(--c2);}
+.sbox::placeholder{color:var(--tx3);}
+.ptabs{display:flex;gap:4px;padding:7px 10px;background:var(--sf);border-bottom:1px solid var(--bd);}
+.ptab{flex:1;text-align:center;font-size:10px;font-weight:700;padding:5px 4px;border-radius:5px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;border:1px solid var(--bd);color:var(--tx3);background:transparent;transition:all .15s;}
+.ptab.active{background:var(--acc);color:#000;border-color:var(--acc);}
+.pscroll{flex:1;overflow-y:auto;padding:7px;display:flex;flex-direction:column;gap:4px;}
+.pscroll::-webkit-scrollbar{width:3px;}
+.pscroll::-webkit-scrollbar-thumb{background:var(--bd);}
 
-/* SIDEBAR */
-.sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
-.sidebar-header{padding:14px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px;background:var(--surface2);}
-.sidebar-title{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--accent);letter-spacing:2px;text-transform:uppercase;}
-.upload-zone{border:1.5px dashed var(--border);border-radius:8px;padding:12px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg);}
-.upload-zone:hover{border-color:var(--accent);background:rgba(245,158,11,.05);}
-.upload-zone.has-file{border-color:var(--accent3);background:rgba(16,185,129,.05);}
-.upload-zone p{font-size:10px;color:var(--text2);margin-top:4px;}
-.upload-zone .icon{font-size:18px;}
-.search-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:11px;width:100%;outline:none;transition:border-color .2s;}
-.search-box:focus{border-color:var(--accent2);}
-.search-box::placeholder{color:var(--text3);}
-
-/* PAIR TABS */
-.pair-tabs{display:flex;gap:4px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);}
-.pair-tab{flex:1;text-align:center;font-size:10px;font-weight:600;padding:5px 8px;border-radius:5px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;border:1px solid var(--border);color:var(--text3);background:transparent;transition:all .15s;}
-.pair-tab.active{background:var(--accent);color:#000;border-color:var(--accent);}
-
-.pairs-scroll{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:5px;}
-.pairs-scroll::-webkit-scrollbar{width:4px;}
-.pairs-scroll::-webkit-scrollbar-thumb{background:var(--border);}
-
-/* PAIR CARD */
-.pair-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;cursor:grab;transition:all .15s;position:relative;user-select:none;}
-.pair-card:active{cursor:grabbing;}
-.pair-card:hover{border-color:var(--accent2);box-shadow:var(--glow2);transform:translateX(2px);}
-.pair-card.dragging{opacity:.4;border-color:var(--accent);}
-.pair-card.assigned{opacity:.45;border-style:dashed;cursor:default;}
-.pair-card.assigned:hover{transform:none;border-color:var(--border);box-shadow:none;}
-.pair-card.disbanded{background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.25);}
-.pair-num{font-size:9px;color:var(--text3);font-weight:600;letter-spacing:1px;margin-bottom:3px;}
-.pair-names{font-size:11px;font-weight:600;color:var(--text);line-height:1.4;}
-.pair-names .name2{color:var(--text2);font-weight:400;}
-.pair-badge{position:absolute;top:5px;right:7px;font-size:8px;border-radius:4px;padding:1px 5px;letter-spacing:.5px;}
-.pair-badge.assigned{background:rgba(16,185,129,.2);color:var(--accent3);border:1px solid rgba(16,185,129,.3);}
-.pair-badge.disbanded{background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.3);}
-.pair-actions{display:flex;gap:4px;margin-top:6px;}
-.pair-action-btn{font-size:9px;padding:2px 7px;border-radius:4px;border:none;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.3px;transition:all .15s;}
-.disband-btn{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.25);}
-.disband-btn:hover{background:var(--danger);color:#fff;}
-.restore-btn{background:rgba(16,185,129,.15);color:var(--accent3);border:1px solid rgba(16,185,129,.25);}
-.restore-btn:hover{background:var(--accent3);color:#000;}
-
-/* INDIVIDUAL person cards (from disbanded pairs) */
-.individual-card{background:rgba(249,115,22,.06);border:1px solid rgba(249,115,22,.25);border-radius:8px;padding:9px 11px;cursor:grab;transition:all .15s;position:relative;user-select:none;}
-.individual-card:hover{border-color:var(--warn);transform:translateX(2px);}
-.individual-card.assigned{opacity:.45;border-style:dashed;cursor:default;}
-.individual-card.assigned:hover{transform:none;border-color:rgba(249,115,22,.25);}
-.individual-tag{font-size:8px;color:var(--warn);font-weight:700;letter-spacing:1px;margin-bottom:3px;text-transform:uppercase;}
-.individual-name{font-size:12px;font-weight:600;color:var(--text);}
+/* PAIR CARDS */
+.pcard{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;cursor:grab;transition:all .15s;position:relative;user-select:none;}
+.pcard:active{cursor:grabbing;}
+.pcard:hover:not(.asgn):not(.ndrag){border-color:var(--c2);box-shadow:var(--gc);transform:translateX(2px);}
+.pcard.asgn{opacity:.4;border-style:dashed;cursor:default;}
+.pcard.dis{background:rgba(239,68,68,.05);border-color:rgba(239,68,68,.2);}
+.pcard.ndrag{cursor:default;}
+.pn{font-size:9px;color:var(--tx3);font-weight:600;letter-spacing:1px;margin-bottom:2px;}
+.pnames{font-size:11px;font-weight:600;color:var(--tx);line-height:1.4;}
+.pnames .n2{color:var(--tx2);font-weight:400;}
+.pbadge{position:absolute;top:5px;right:7px;font-size:8px;border-radius:4px;padding:1px 5px;letter-spacing:.5px;}
+.pbadge.a{background:rgba(16,185,129,.2);color:var(--c3);border:1px solid rgba(16,185,129,.3);}
+.pbadge.d{background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.3);}
+.pacts{display:flex;gap:3px;margin-top:5px;flex-wrap:wrap;}
+.pabtn{font-size:9px;padding:2px 6px;border-radius:4px;border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.3px;transition:all .15s;}
+.dbtn{background:rgba(239,68,68,.1);color:#fca5a5;border:1px solid rgba(239,68,68,.2);} .dbtn:hover{background:var(--cr);color:#fff;}
+.rbtn{background:rgba(16,185,129,.1);color:var(--c3);border:1px solid rgba(16,185,129,.2);} .rbtn:hover{background:var(--c3);color:#000;}
+.icard{background:rgba(249,115,22,.05);border:1px solid rgba(249,115,22,.2);border-radius:8px;padding:8px 10px;cursor:grab;transition:all .15s;position:relative;user-select:none;}
+.icard:hover:not(.asgn){border-color:var(--cw);transform:translateX(2px);}
+.icard.asgn{opacity:.4;border-style:dashed;cursor:default;}
+.itag{font-size:8px;color:var(--cw);font-weight:700;letter-spacing:1px;margin-bottom:2px;text-transform:uppercase;}
+.iname{font-size:12px;font-weight:600;color:var(--tx);}
 
 /* CONTENT */
 .content{display:flex;flex-direction:column;overflow:hidden;}
-.content-toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.toolbar-section{display:flex;align-items:center;gap:6px;}
-.toolbar-divider{width:1px;height:22px;background:var(--border);}
-.input-sm{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:11px;outline:none;transition:border-color .2s;}
-.input-sm:focus{border-color:var(--accent);}
-.board-scroll{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px;}
-.board-scroll::-webkit-scrollbar{width:6px;}
-.board-scroll::-webkit-scrollbar-thumb{background:var(--border);}
-
-/* VEHICLE */
-.vehicle-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;animation:fadeIn .3s ease;}
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.vehicle-header{padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);}
-.vehicle-header.bus{background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(245,158,11,.04));}
-.vehicle-header.sharon1{background:linear-gradient(135deg,rgba(6,182,212,.12),rgba(6,182,212,.04));}
-.vehicle-header.sharon2{background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(16,185,129,.04));}
-.vehicle-info{display:flex;align-items:center;gap:10px;}
-.vehicle-icon{font-size:22px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--surface2);}
-.vehicle-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);}
-.vehicle-meta{font-size:10px;color:var(--text2);margin-top:2px;}
-.vehicle-cap{font-size:10px;color:var(--text3);text-align:right;}
-.vehicle-cap .cap-num{font-size:17px;font-family:'Syne',sans-serif;font-weight:700;display:block;}
-.vehicle-cap .cap-num.over{color:var(--danger);}
-.vehicle-cap .cap-num.ok{color:var(--accent3);}
-.vehicle-header-actions{display:flex;align-items:center;gap:6px;}
-.feeders-area{padding:10px 14px;display:flex;flex-direction:column;gap:8px;}
-
-/* FEEDER LANE */
-.feeder-lane{background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden;transition:border-color .2s;}
-.feeder-lane.drag-over{border-color:var(--accent);box-shadow:var(--glow);background:rgba(245,158,11,.05);}
-.feeder-lane-header{padding:7px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(30,58,95,.5);background:rgba(0,0,0,.2);flex-wrap:wrap;gap:5px;}
-.feeder-name-input{background:transparent;border:none;color:var(--accent2);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;outline:none;letter-spacing:.5px;min-width:120px;max-width:250px;flex:1;}
-.feeder-name-input::placeholder{color:var(--text3);}
-.feeder-actions{display:flex;align-items:center;gap:5px;}
-.feeder-pairs-count{font-size:10px;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 6px;}
-.remove-feeder-btn{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;border-radius:4px;transition:all .15s;}
-.remove-feeder-btn:hover{color:var(--danger);background:rgba(239,68,68,.1);}
-.feeder-drop-zone{min-height:56px;padding:8px 10px;display:flex;flex-wrap:wrap;gap:7px;align-items:flex-start;align-content:flex-start;}
-.feeder-drop-zone.empty{align-items:center;justify-content:center;}
-.drop-hint{font-size:11px;color:var(--text3);letter-spacing:.5px;pointer-events:none;}
-
-/* CHIP */
-.assigned-chip{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 9px;font-size:11px;display:flex;align-items:center;gap:7px;animation:chipIn .2s ease;max-width:190px;}
-.assigned-chip.individual-chip{border-color:rgba(249,115,22,.3);background:rgba(249,115,22,.06);}
-@keyframes chipIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
-.chip-names{flex:1;line-height:1.4;}
-.chip-name1{font-weight:600;color:var(--text);}
-.chip-name2{color:var(--text2);font-size:9px;}
-.chip-remove{background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0;line-height:1;flex-shrink:0;transition:color .15s;}
-.chip-remove:hover{color:var(--danger);}
-.add-feeder-btn{border:1.5px dashed var(--border);background:transparent;border-radius:8px;padding:8px;width:100%;color:var(--text3);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;transition:all .2s;letter-spacing:.5px;text-transform:uppercase;}
-.add-feeder-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(245,158,11,.04);}
-
-/* STATS */
-.stats-bar{display:flex;gap:14px;padding:8px 18px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap;}
-.stat-item{font-size:10px;color:var(--text2);display:flex;align-items:center;gap:5px;}
-.stat-num{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;}
-.stat-num.accent{color:var(--accent);}
-.stat-num.cyan{color:var(--accent2);}
-.stat-num.green{color:var(--accent3);}
-.stat-num.warn{color:var(--warn);}
+.tbar{background:var(--sf);border-bottom:1px solid var(--bd);padding:8px 14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.tsep{width:1px;height:19px;background:var(--bd);}
+.insm{background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:5px 8px;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:10px;outline:none;transition:border-color .2s;}
+.insm:focus{border-color:var(--acc);}
+.stbar{display:flex;gap:11px;padding:7px 14px;background:var(--sf2);border-bottom:1px solid var(--bd);flex-wrap:wrap;}
+.stat{font-size:10px;color:var(--tx2);display:flex;align-items:center;gap:4px;}
+.snum{font-family:'Syne',sans-serif;font-weight:800;font-size:12px;}
+.bscroll{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:13px;}
+.bscroll::-webkit-scrollbar{width:5px;}
+.bscroll::-webkit-scrollbar-thumb{background:var(--bd);}
 
 /* EMPTY STATE */
-.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center;color:var(--text3);}
-.empty-state .big-icon{font-size:44px;opacity:.5;}
-.empty-state h3{font-family:'Syne',sans-serif;font-size:17px;color:var(--text2);}
-.empty-state p{font-size:11px;line-height:1.6;max-width:300px;}
+.estate{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:36px;text-align:center;color:var(--tx3);}
+.estate .ei{font-size:42px;opacity:.45;}
+.estate h3{font-family:'Syne',sans-serif;font-size:16px;color:var(--tx2);}
+.estate p{font-size:11px;line-height:1.6;max-width:290px;}
+
+/* VEHICLE SECTION */
+.vsec{border-radius:12px;overflow:hidden;animation:fUp .3s ease;border:1px solid var(--bd);position:relative;}
+@keyframes fUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* Unavailable overlay */
+.vuov{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:rgba(7,12,24,.87);backdrop-filter:blur(3px);border:2px solid var(--cr);border-radius:12px;}
+.vubig{font-family:'Syne',sans-serif;font-weight:900;font-size:20px;color:var(--cr);letter-spacing:1.5px;text-transform:uppercase;text-shadow:0 0 20px rgba(239,68,68,.5);}
+.vureason{font-size:11px;color:#fca5a5;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:6px;padding:5px 14px;max-width:280px;text-align:center;}
+/* Floating status pill */
+.vstpill{position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:var(--cr);color:#fff;font-family:'Syne',sans-serif;font-weight:800;font-size:10px;letter-spacing:2px;padding:4px 16px;border-radius:0 0 10px 10px;box-shadow:var(--gr);white-space:nowrap;animation:pulse 1.8s ease-in-out infinite;z-index:11;}
+.vstpill.maint{background:var(--cw);}
+@keyframes pulse{0%,100%{box-shadow:0 0 8px rgba(239,68,68,.4)}50%{box-shadow:0 0 26px rgba(239,68,68,.85)}}
+.vhdr{padding:12px 15px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--bd);}
+.vc0{background:linear-gradient(135deg,rgba(245,158,11,.14),rgba(245,158,11,.04));}
+.vc1{background:linear-gradient(135deg,rgba(6,182,212,.14),rgba(6,182,212,.04));}
+.vc2{background:linear-gradient(135deg,rgba(16,185,129,.14),rgba(16,185,129,.04));}
+.vc3{background:linear-gradient(135deg,rgba(139,92,246,.14),rgba(139,92,246,.04));}
+.vc4{background:linear-gradient(135deg,rgba(249,115,22,.14),rgba(249,115,22,.04));}
+.vc5{background:linear-gradient(135deg,rgba(236,72,153,.14),rgba(236,72,153,.04));}
+.vinfo{display:flex;align-items:center;gap:9px;}
+.vico{font-size:20px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--sf2);}
+.vname{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--tx);}
+.vmeta{font-size:10px;color:var(--tx2);margin-top:2px;}
+.vcap{font-size:10px;color:var(--tx3);text-align:right;}
+.vcap .cn{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;display:block;}
+.cn.ov{color:var(--cr);} .cn.ok{color:var(--c3);}
+.vhacts{display:flex;align-items:center;gap:5px;}
+.vbody{background:var(--sf);padding:9px 13px;display:flex;flex-direction:column;gap:7px;}
+
+/* FEEDER */
+.flane{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;overflow:hidden;transition:border-color .2s;}
+.flane.dover{border-color:var(--acc);box-shadow:var(--gy);background:rgba(245,158,11,.04);}
+.fhd{padding:6px 11px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(26,40,64,.5);background:rgba(0,0,0,.25);flex-wrap:wrap;gap:4px;}
+.fin{background:transparent;border:none;color:var(--c2);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;outline:none;letter-spacing:.5px;min-width:90px;max-width:210px;flex:1;}
+.fin::placeholder{color:var(--tx3);}
+.fin:disabled{color:var(--tx3);cursor:not-allowed;}
+.facts{display:flex;align-items:center;gap:4px;}
+.fcnt{font-size:10px;color:var(--tx3);background:var(--bg);border:1px solid var(--bd);border-radius:4px;padding:2px 5px;}
+.fdel{background:transparent;border:none;color:var(--tx3);cursor:pointer;font-size:12px;padding:2px 3px;border-radius:4px;transition:all .15s;}
+.fdel:hover{color:var(--cr);background:rgba(239,68,68,.1);}
+.ontog{font-size:8px;border-radius:4px;padding:2px 6px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:.5px;border:1px solid;transition:all .15s;}
+.ontog.off{color:var(--tx3);border-color:var(--bd);background:transparent;}
+.ontog.off:hover{color:var(--acc);border-color:var(--acc);}
+.ontog.on{color:var(--acc);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1);}
+.fdrop{min-height:52px;padding:7px 9px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;align-content:flex-start;}
+.fdrop.emp{align-items:center;justify-content:center;}
+.dhint{font-size:10px;color:var(--tx3);letter-spacing:.5px;pointer-events:none;}
+.afbtn{border:1.5px dashed var(--bd);background:transparent;border-radius:8px;padding:7px;width:100%;color:var(--tx3);font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;transition:all .2s;letter-spacing:.5px;text-transform:uppercase;}
+.afbtn:hover{border-color:var(--acc);color:var(--acc);background:rgba(245,158,11,.03);}
+.afbtn:disabled{cursor:not-allowed;opacity:.35;}
+
+/* CHIPS */
+.chip{background:var(--sf);border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font-size:10px;display:flex;align-items:center;gap:6px;animation:cIn .2s ease;max-width:180px;}
+.chip.ich{border-color:rgba(249,115,22,.25);background:rgba(249,115,22,.05);}
+@keyframes cIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+.cn1{font-weight:600;color:var(--tx);font-size:11px;} .cn2{color:var(--tx2);font-size:9px;}
+.crm{background:none;border:none;color:var(--tx3);cursor:pointer;font-size:11px;padding:0;line-height:1;transition:color .15s;}
+.crm:hover{color:var(--cr);}
 
 /* MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:780px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:modalIn .2s ease;}
-@keyframes modalIn{from{opacity:0;transform:scale(.95) translateY(-10px)}to{opacity:1;transform:none}}
-.modal-header{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface2);}
-.modal-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);}
-.modal-body{flex:1;overflow-y:auto;padding:18px;}
-.modal-body::-webkit-scrollbar{width:4px;}
-.modal-body::-webkit-scrollbar-thumb{background:var(--border);}
-.modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;background:var(--surface2);}
+.mov{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:14px;backdrop-filter:blur(5px);}
+.modal{background:var(--sf);border:1px solid var(--bd2);border-radius:14px;width:100%;max-width:700px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.65);animation:mIn .2s ease;}
+@keyframes mIn{from{opacity:0;transform:scale(.94) translateY(-12px)}to{opacity:1;transform:none}}
+.msm{max-width:480px;}
+.mhd{padding:14px 17px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;background:var(--sf2);}
+.mttl{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--tx);}
+.mbody{flex:1;overflow-y:auto;padding:16px;}
+.mbody::-webkit-scrollbar{width:4px;}
+.mbody::-webkit-scrollbar-thumb{background:var(--bd);}
+.mft{padding:11px 17px;border-top:1px solid var(--bd);display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;background:var(--sf2);}
 
-/* OUTPUT SECTIONS */
-.output-section{background:var(--bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px;}
-.output-section-header{padding:9px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
-.output-section-title{font-size:10px;font-weight:600;color:var(--accent);letter-spacing:1px;text-transform:uppercase;}
-.output-text{padding:12px;font-size:11px;line-height:1.8;color:var(--text);white-space:pre-wrap;word-break:break-word;}
-.output-tabs{display:flex;gap:4px;margin-bottom:14px;}
-.output-tab{flex:1;text-align:center;font-size:10px;font-weight:600;padding:7px;border-radius:6px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;border:1px solid var(--border);color:var(--text3);background:transparent;transition:all .15s;}
-.output-tab.active{background:var(--accent);color:#000;border-color:var(--accent);}
+/* FORM */
+.frow{margin-bottom:12px;}
+.flabel{font-size:10px;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5px;display:block;}
+.finput{width:100%;background:var(--bg2);border:1.5px solid var(--bd);border-radius:8px;padding:10px 12px;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;transition:all .2s;}
+.finput:focus{border-color:var(--c2);box-shadow:0 0 0 3px rgba(6,182,212,.08);}
+.fselect{width:100%;background:var(--bg2);border:1.5px solid var(--bd);border-radius:8px;padding:10px 12px;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;cursor:pointer;transition:border-color .2s;}
+.fselect:focus{border-color:var(--acc);}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
 
-/* WA IMAGE CANVAS */
-#waCanvas{border:1px solid var(--border);border-radius:8px;max-width:100%;display:block;margin:0 auto;}
+/* OUTPUT */
+.otabs{display:flex;gap:4px;margin-bottom:12px;}
+.otab{flex:1;text-align:center;font-size:10px;font-weight:700;padding:7px;border-radius:6px;cursor:pointer;letter-spacing:.5px;text-transform:uppercase;border:1px solid var(--bd);color:var(--tx3);background:transparent;transition:all .15s;}
+.otab.active{background:var(--acc);color:#000;border-color:var(--acc);}
+.osec{background:var(--bg);border:1px solid var(--bd);border-radius:8px;overflow:hidden;margin-bottom:11px;}
+.oshd{padding:8px 11px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;}
+.osttl{font-size:10px;font-weight:700;color:var(--acc);letter-spacing:1px;text-transform:uppercase;}
+.otext{padding:11px;font-size:11px;line-height:1.85;color:var(--tx);white-space:pre-wrap;word-break:break-word;}
 
-/* SCHEDULE HISTORY */
-.history-item{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;transition:border-color .15s;}
-.history-item:hover{border-color:var(--accent2);}
-.history-date{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text);}
-.history-meta{font-size:10px;color:var(--text3);margin-top:2px;}
-.history-actions{display:flex;gap:6px;}
+/* HISTORY */
+.hi{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:9px 13px;display:flex;align-items:center;justify-content:space-between;gap:9px;margin-bottom:5px;transition:border-color .15s;}
+.hi:hover{border-color:var(--c2);}
+.hdate{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--tx);}
+.hmeta{font-size:10px;color:var(--tx3);margin-top:2px;}
+
+/* VM CARDS */
+.vmcard{background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:11px 13px;margin-bottom:7px;display:flex;align-items:flex-start;justify-content:space-between;gap:9px;transition:border-color .15s;}
+.vmcard:hover{border-color:var(--bd2);}
+.vmcard.unav{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.04);}
+.vmname{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--tx);}
+.vminfo{font-size:10px;color:var(--tx3);margin-top:3px;line-height:1.6;}
+.vmbadge{font-size:9px;font-weight:700;border-radius:20px;padding:2px 9px;letter-spacing:.5px;white-space:nowrap;}
+.vmbadge.active{background:rgba(16,185,129,.15);color:var(--c3);border:1px solid rgba(16,185,129,.3);}
+.vmbadge.fault{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3);animation:pulse 2s ease-in-out infinite;}
+.vmbadge.maintenance{background:rgba(249,115,22,.15);color:#fdba74;border:1px solid rgba(249,115,22,.3);}
 
 /* TOAST */
-.toast{position:fixed;bottom:18px;right:18px;background:var(--accent3);color:#000;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;padding:9px 16px;border-radius:8px;z-index:2000;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;}
+.toast{position:fixed;bottom:14px;right:14px;background:var(--c3);color:#000;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:9px 15px;border-radius:8px;z-index:9000;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;}
 .toast.show{opacity:1;transform:translateY(0);}
-.toast.error{background:var(--danger);color:#fff;}
+.toast.err{background:var(--cr);color:#fff;}
+.toast.warn{background:var(--cw);color:#000;}
 
 /* LOADING */
-.loading-overlay{position:fixed;inset:0;background:rgba(10,15,30,.8);z-index:500;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
-.spinner{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg)}}
+.lov{position:fixed;inset:0;background:rgba(7,12,24,.85);z-index:4000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.spin{width:34px;height:34px;border:3px solid var(--bd);border-top-color:var(--acc);border-radius:50%;animation:sp .8s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg)}}
 
-.drag-ghost{position:fixed;pointer-events:none;z-index:9999;background:var(--surface2);border:1.5px solid var(--accent);border-radius:8px;padding:7px 11px;font-size:10px;font-family:'IBM Plex Mono',monospace;color:var(--text);box-shadow:var(--glow);opacity:.95;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis;}
+.dghost{position:fixed;pointer-events:none;z-index:9997;background:var(--sf2);border:1.5px solid var(--acc);border-radius:8px;padding:6px 10px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--tx);box-shadow:var(--gy);opacity:.95;white-space:nowrap;max-width:175px;overflow:hidden;text-overflow:ellipsis;}
+
+/* DISBAND ROWS */
+.drow{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:9px 11px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:7px;}
 
 .hidden{display:none!important;}
-@media(max-width:768px){.main{grid-template-columns:1fr;height:auto;overflow:visible;}.sidebar{height:280px;border-right:none;border-bottom:1px solid var(--border);}.content{height:calc(100vh - 61px - 280px);}}
-
-/* DISBAND MODAL */
-.disband-modal{max-width:500px;}
-.disband-form{display:flex;flex-direction:column;gap:12px;}
-.form-label{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}
-.person-reassign{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
-.person-name{font-size:12px;font-weight:600;color:var(--text);flex:1;min-width:120px;}
-.reassign-select{background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:10px;border-radius:5px;padding:4px 8px;outline:none;flex:2;min-width:160px;}
-.reassign-select:focus{border-color:var(--accent);}
-
-/* ONGOING BADGE */
-.ongoing-badge{font-size:8px;background:rgba(245,158,11,.2);color:var(--accent);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 6px;letter-spacing:.5px;cursor:pointer;transition:all .15s;}
-.ongoing-badge:hover{background:rgba(245,158,11,.35);}
-.ongoing-badge.active{background:var(--accent);color:#000;}
+@media(max-width:768px){.main{grid-template-columns:1fr;flex-direction:column;}.sidebar{height:250px;border-right:none;border-bottom:1px solid var(--bd);}}
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app">
 
-<header>
-  <div class="header-left">
-    <div class="logo">⚡ FEEDER ALLOCATOR <span>/ Daily Schedule</span></div>
-    <div class="date-display" id="dateDisplay">—</div>
-    <div class="firebase-status disconnected" id="fbStatus">● LOCAL ONLY</div>
+<!-- ═══ LOGIN ═══ -->
+<div id="loginScreen">
+  <div class="lcard">
+    <div class="llogo">⚡ FEEDER ALLOCATOR</div>
+    <div class="lsub">GIS Enumeration Scheduler</div>
+    <div class="lfield"><label class="llabel">Email</label><input type="email" class="linput" id="lemail" placeholder="your@email.com" autocomplete="username"></div>
+    <div class="lfield"><label class="llabel">Password</label><input type="password" class="linput" id="lpass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="lbtn" id="lbtn" onclick="doLogin()">🔐 Sign In</button>
+    <div class="lerr" id="lerr"></div>
+    <hr class="ldiv">
+    <button class="vbtn" onclick="enterViewer()">👁 View Schedule (Read-Only)</button>
   </div>
-  <div class="header-right">
-    <input type="date" class="input-sm" id="scheduleDateInput" onchange="updateDateDisplay()">
-    <button class="btn btn-purple" onclick="showHistoryModal()">📅 HISTORY</button>
-    <button class="btn btn-secondary" onclick="saveSchedule()">💾 SAVE</button>
-    <button class="btn btn-secondary" onclick="clearAll()">🗑 CLEAR</button>
-    <button class="btn btn-primary" onclick="previewWhatsApp()">📱 WHATSAPP</button>
-  </div>
-</header>
+</div>
 
-<div class="main">
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <div class="sidebar-title">👥 Staff Pairs</div>
-      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pairFile').click()">
-        <div class="icon">📋</div>
-        <p id="uploadStatus">Upload pairing file (.xlsx)</p>
-        <input type="file" id="pairFile" accept=".xlsx,.xls,.csv" class="hidden" onchange="handlePairsUpload(this)">
-      </div>
-      <input class="search-box" type="text" placeholder="🔍 search name..." oninput="filterPairs(this.value)">
-    </div>
-    <div class="pair-tabs">
-      <button class="pair-tab active" id="tab-pairs" onclick="switchTab('pairs')">PAIRS</button>
-      <button class="pair-tab" id="tab-individuals" onclick="switchTab('individuals')">SOLO</button>
-    </div>
-    <div class="pairs-scroll" id="pairsList">
-      <div class="empty-state" style="padding:24px 16px;">
-        <div class="big-icon" style="font-size:28px">📂</div>
-        <p style="font-size:10px;margin-top:6px;">Upload your pairing Excel file to begin</p>
-      </div>
-    </div>
+<!-- ═══ MAIN APP ═══ -->
+<div id="mainApp" class="hidden" style="display:flex;flex-direction:column;height:100vh;">
+  <div class="vbanner hidden" id="vbanner">
+    👁 <strong>VIEW-ONLY MODE</strong> — Viewing as guest. &nbsp;<a href="#" onclick="showLoginFromViewer()" style="color:#a78bfa;text-decoration:underline;">Sign in</a> to make changes.
   </div>
-
-  <!-- BOARD -->
-  <div class="content" id="contentArea">
-    <div class="empty-state" id="emptyState">
-      <div class="big-icon">🚌</div>
-      <h3>No Schedule Yet</h3>
-      <p>Upload your pairs file, then assign pairs to feeders per vehicle. You can also load a previous day's schedule.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
-        <button class="btn btn-primary" onclick="initBoard()">⚡ START SCHEDULING</button>
-        <button class="btn btn-purple" onclick="showHistoryModal()">📅 LOAD PREVIOUS</button>
-      </div>
+  <header>
+    <div class="hleft">
+      <div class="hlogo">⚡ FEEDER ALLOCATOR <small>/ DAILY SCHEDULE</small></div>
+      <div class="dchip" id="dchip">—</div>
+      <div class="fbstat off" id="fbstat">● LOCAL</div>
     </div>
-    <div id="boardArea" class="hidden" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
-      <div class="stats-bar" id="statsBar">
-        <div class="stat-item"><span class="stat-num accent" id="statTotal">0</span> PAIRS</div>
-        <div class="stat-item"><span class="stat-num warn" id="statDisbanded">0</span> DISBANDED</div>
-        <div class="stat-item"><span class="stat-num green" id="statAssigned">0</span> ASSIGNED</div>
-        <div class="stat-item"><span class="stat-num cyan" id="statUnassigned">0</span> UNASSIGNED</div>
-        <div class="stat-item">🚌 <span class="stat-num accent" id="statBus">0</span></div>
-        <div class="stat-item">🚐 S1 <span class="stat-num cyan" id="statS1">0</span></div>
-        <div class="stat-item">🚐 S2 <span class="stat-num green" id="statS2">0</span></div>
-      </div>
-      <div class="content-toolbar">
-        <div class="toolbar-section">
-          <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;">Add Feeder:</span>
-          <button class="btn btn-secondary" onclick="addFeeder('bus')">+ BUS</button>
-          <button class="btn btn-secondary" onclick="addFeeder('sharon1')">+ S1</button>
-          <button class="btn btn-secondary" onclick="addFeeder('sharon2')">+ S2</button>
+    <div class="hright">
+      <div class="uchip"><span id="uemail">—</span><span class="rbadge viewer" id="rbadge">VIEWER</span></div>
+      <input type="date" class="insm" id="datein" onchange="updateDate()">
+      <button class="btn bp sm" onclick="showHistory()">📅 HISTORY</button>
+      <button class="btn bh sm" onclick="showVehicleManager()">🚌 VEHICLES</button>
+      <button class="btn bh sm" id="bsave" onclick="saveSchedule()" disabled>💾 SAVE</button>
+      <button class="btn bh sm" id="bclear" onclick="clearAll()" disabled>🗑 CLEAR</button>
+      <button class="btn by sm" onclick="previewWA()">📱 WHATSAPP</button>
+      <button class="btn br sm" id="blogout" onclick="doLogout()">↩ LOGOUT</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="sidebar">
+      <div class="sbhd">
+        <div class="sbttl">👥 Staff Pairs</div>
+        <div class="uz" id="uz" onclick="if(canEdit())document.getElementById('pf').click()">
+          <div style="font-size:17px;">📋</div>
+          <p id="ustat">Upload pairing file (.xlsx)</p>
+          <input type="file" id="pf" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleUpload(this)">
         </div>
-        <div class="toolbar-divider"></div>
-        <div class="toolbar-section">
-          <button class="btn btn-secondary" onclick="autoAssign()">🎲 AUTO</button>
-          <button class="btn btn-secondary" onclick="resetAssignments()">↩ RESET</button>
-          <button class="btn btn-success" onclick="saveSchedule()">💾 SAVE</button>
+        <input class="sbox" type="text" placeholder="🔍 search name..." oninput="filterPairs(this.value)">
+      </div>
+      <div class="ptabs">
+        <button class="ptab active" id="tp" onclick="switchTab('pairs')">PAIRS</button>
+        <button class="ptab" id="ts" onclick="switchTab('solo')">SOLO</button>
+      </div>
+      <div class="pscroll" id="plist">
+        <div class="estate" style="padding:18px 12px;"><div style="font-size:26px;opacity:.4;">📂</div><p style="font-size:10px;margin-top:5px;">Upload pairing file to begin</p></div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="estate" id="estate">
+        <div class="ei">🚌</div><h3>No Schedule Yet</h3>
+        <p>Upload pairs, then assign them to feeders per vehicle. Load a previous schedule or start fresh.</p>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-top:7px;">
+          <button class="btn by" onclick="if(canEdit())initBoard()">⚡ START</button>
+          <button class="btn bp" onclick="showHistory()">📅 LOAD PREVIOUS</button>
         </div>
       </div>
-      <div class="board-scroll" id="boardScroll"></div>
+      <div id="board" class="hidden" style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+        <div class="stbar">
+          <div class="stat"><span class="snum" style="color:var(--acc)" id="sp">0</span> PAIRS</div>
+          <div class="stat"><span class="snum" style="color:var(--cw)" id="sd">0</span> DISBANDED</div>
+          <div class="stat"><span class="snum" style="color:var(--c3)" id="sa">0</span> ASSIGNED</div>
+          <div class="stat"><span class="snum" style="color:var(--c2)" id="su">0</span> UNASSIGNED</div>
+        </div>
+        <div class="tbar">
+          <span style="font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:1px;">Add Feeder:</span>
+          <div id="afbtns"></div>
+          <div class="tsep"></div>
+          <button class="btn bh sm" id="bauto" onclick="autoAssign()" disabled>🎲 AUTO</button>
+          <button class="btn bh sm" id="breset" onclick="resetAll()" disabled>↩ RESET</button>
+        </div>
+        <div class="bscroll" id="bscroll"></div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- WHATSAPP MODAL -->
-<div class="modal-overlay hidden" id="waModal">
-  <div class="modal" style="max-width:820px;">
-    <div class="modal-header">
-      <div class="modal-title">📱 WhatsApp Schedule</div>
-      <button class="btn btn-secondary" onclick="closeModal('waModal')">✕ CLOSE</button>
-    </div>
-    <div class="modal-body" id="waModalBody"></div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="copyAll()">📋 COPY ALL TEXT</button>
-      <button class="btn btn-cyan" onclick="downloadImage()">🖼 DOWNLOAD IMAGE</button>
-      <button class="btn btn-primary" onclick="closeModal('waModal')">✓ DONE</button>
+<!-- ═══ MODALS ═══ -->
+<!-- WhatsApp -->
+<div class="mov hidden" id="waMod">
+  <div class="modal">
+    <div class="mhd"><div class="mttl">📱 WhatsApp Schedule</div><button class="btn bh sm" onclick="CM('waMod')">✕</button></div>
+    <div class="mbody" id="wabody"></div>
+    <div class="mft">
+      <button class="btn bh" onclick="copyAll()">📋 COPY ALL</button>
+      <button class="btn bc" onclick="dlImage()">🖼 DOWNLOAD IMAGE</button>
+      <button class="btn by" onclick="CM('waMod')">✓ DONE</button>
     </div>
   </div>
 </div>
-
-<!-- HISTORY MODAL -->
-<div class="modal-overlay hidden" id="historyModal">
-  <div class="modal" style="max-width:600px;">
-    <div class="modal-header">
-      <div class="modal-title">📅 Schedule History</div>
-      <button class="btn btn-secondary" onclick="closeModal('historyModal')">✕ CLOSE</button>
-    </div>
-    <div class="modal-body" id="historyModalBody">
-      <div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">Loading history...</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('historyModal')">CLOSE</button>
-    </div>
+<!-- History -->
+<div class="mov hidden" id="histMod">
+  <div class="modal msm" style="max-width:600px;">
+    <div class="mhd"><div class="mttl">📅 Schedule History</div><button class="btn bh sm" onclick="CM('histMod')">✕</button></div>
+    <div class="mbody" id="histbody">Loading…</div>
+    <div class="mft"><button class="btn bh" onclick="CM('histMod')">CLOSE</button></div>
   </div>
 </div>
-
-<!-- DISBAND MODAL -->
-<div class="modal-overlay hidden" id="disbandModal">
-  <div class="modal disband-modal">
-    <div class="modal-header">
-      <div class="modal-title">✂️ Disband Pair</div>
-      <button class="btn btn-secondary" onclick="closeModal('disbandModal')">✕</button>
-    </div>
-    <div class="modal-body" id="disbandModalBody"></div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('disbandModal')">CANCEL</button>
-      <button class="btn btn-danger" onclick="confirmDisband()">✂️ DISBAND & REASSIGN</button>
-    </div>
+<!-- Disband -->
+<div class="mov hidden" id="disMod">
+  <div class="modal msm">
+    <div class="mhd"><div class="mttl">✂️ Disband Pair</div><button class="btn bh sm" onclick="CM('disMod')">✕</button></div>
+    <div class="mbody" id="disbody"></div>
+    <div class="mft"><button class="btn bh" onclick="CM('disMod')">CANCEL</button><button class="btn br" onclick="confirmDisband()">✂️ DISBAND</button></div>
   </div>
 </div>
-
-<!-- CANVAS (hidden) for image generation -->
-<canvas id="waCanvas" class="hidden"></canvas>
+<!-- Vehicle Manager -->
+<div class="mov hidden" id="vmMod">
+  <div class="modal" style="max-width:660px;">
+    <div class="mhd"><div class="mttl">🚌 Vehicle Fleet Manager</div><button class="btn bh sm" onclick="CM('vmMod')">✕</button></div>
+    <div class="mbody" id="vmbody"></div>
+    <div class="mft"><button class="btn bg" id="baddv" onclick="showAddVehicle()">+ ADD VEHICLE</button><button class="btn bh" onclick="CM('vmMod')">DONE</button></div>
+  </div>
+</div>
+<!-- Add/Edit Vehicle -->
+<div class="mov hidden" id="avMod">
+  <div class="modal msm">
+    <div class="mhd"><div class="mttl" id="avttl">➕ Add Vehicle</div><button class="btn bh sm" onclick="CM('avMod')">✕</button></div>
+    <div class="mbody">
+      <div class="frow"><label class="flabel">Vehicle Name</label><input class="finput" id="vfname" placeholder="e.g. Toyota Hilux, 18-Seater Bus"></div>
+      <div class="fgrid">
+        <div class="frow"><label class="flabel">Icon / Emoji</label><input class="finput" id="vfico" placeholder="🚐 🚌 🛻"></div>
+        <div class="frow"><label class="flabel">Capacity (seats)</label><input class="finput" type="number" id="vfcap" placeholder="8" min="1" max="60"></div>
+      </div>
+      <div class="frow"><label class="flabel">Driver Name</label><input class="finput" id="vfdrv" placeholder="Driver's name"></div>
+      <div class="frow"><label class="flabel">Status</label>
+        <select class="fselect" id="vfstat" onchange="toggleRR('vfrrow','vfstat')">
+          <option value="active">✅ Active — Available</option>
+          <option value="fault">🔴 Fault / Breakdown</option>
+          <option value="maintenance">🟠 Under Maintenance</option>
+        </select>
+      </div>
+      <div class="frow hidden" id="vfrrow"><label class="flabel">Reason / Details</label><input class="finput" id="vfreason" placeholder="e.g. Engine overheating…"></div>
+    </div>
+    <div class="mft"><button class="btn bh" onclick="CM('avMod')">CANCEL</button><button class="btn by" onclick="saveVehicle()">💾 SAVE</button></div>
+  </div>
+</div>
+<!-- Status Modal -->
+<div class="mov hidden" id="stMod">
+  <div class="modal msm">
+    <div class="mhd"><div class="mttl" id="stttl">Update Vehicle Status</div><button class="btn bh sm" onclick="CM('stMod')">✕</button></div>
+    <div class="mbody">
+      <div class="frow"><label class="flabel">New Status</label>
+        <select class="fselect" id="smstat" onchange="toggleRR('smrrow','smstat')">
+          <option value="active">✅ Active — Available</option>
+          <option value="fault">🔴 Fault / Breakdown</option>
+          <option value="maintenance">🟠 Under Maintenance</option>
+        </select>
+      </div>
+      <div class="frow hidden" id="smrrow"><label class="flabel">Reason</label><input class="finput" id="smreason" placeholder="Describe the issue…"></div>
+    </div>
+    <div class="mft"><button class="btn bh" onclick="CM('stMod')">CANCEL</button><button class="btn by" onclick="confirmStatus()">✅ UPDATE</button></div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
-<div class="loading-overlay hidden" id="loadingOverlay"><div class="spinner"></div></div>
+<div class="lov hidden" id="lov"><div class="spin"></div></div>
 
 <script>
-// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
 // STATE
-// ══════════════════════════════════════════════════════
-let allPairs       = [];   // [{id,name1,name2,disbanded,individual}]
-let disbandedPairs = [];   // [{originalId,persons:[{id,name,assigned,feeder}]}]
-let filteredPairs  = [];
-let activeTab      = 'pairs';
-let schedule = {
-  bus:     { feeders: [] },
-  sharon1: { feeders: [] },
-  sharon2: { feeders: [] }
-};
-const VEHICLES = {
-  bus:     { label:'18-Seater Bus',  driver:'Israel', capacity:18, icon:'🚌', cls:'bus'     },
-  sharon1: { label:'Sharon (8-Seat)',driver:'Sam',    capacity:8,  icon:'🚐', cls:'sharon1' },
-  sharon2: { label:'Sharon (8-Seat)',driver:'Usman',  capacity:8,  icon:'🚐', cls:'sharon2' }
-};
-let feederCounter  = 0;
-let dragPairId     = null;  // can be "p_N" (pair) or "i_N" (individual)
-let dragGhost      = null;
-let boardStarted   = false;
-let pendingDisbandId = null;
-let firebaseReady  = false;
+// ══════════════════════════════════════════════════
+let allPairs=[],disbandedPairs=[],filteredPairs=[];
+let activeTab='pairs',feederCtr=0,boardStarted=false;
+let dragId=null,dragGhost=null;
+let pendingDis=null,pendingStat=null,editVid=null;
+let fbReady=false,isViewer=false;
+const VCOLS=['vc0','vc1','vc2','vc3','vc4','vc5'];
+const VCOLHEX=['#f59e0b','#06b6d4','#10b981','#8b5cf6','#f97316','#ec4899'];
 
-// ══════════════════════════════════════════════════════
-// FIREBASE
-// ══════════════════════════════════════════════════════
-window.addEventListener('firebase-ready', () => {
-  firebaseReady = true;
-  document.getElementById('fbStatus').textContent = '● FIREBASE';
-  document.getElementById('fbStatus').className = 'firebase-status connected';
+let vehicles=[
+  {id:'v1',name:'18-Seater Bus',  icon:'🚌',driver:'Israel',capacity:18,status:'active',reason:''},
+  {id:'v2',name:'Sharon (8-Seat)',icon:'🚐',driver:'Sam',   capacity:8, status:'active',reason:''},
+  {id:'v3',name:'Sharon (8-Seat)',icon:'🚐',driver:'Usman', capacity:8, status:'active',reason:''}
+];
+let schedule={};
+
+// ── AUTH ──────────────────────────────────────────
+function canEdit(){
+  if(isViewer){toast('Sign in to make changes','warn');return false;}
+  const u=window.__currentUser;
+  if(!u){toast('Not authenticated','err');return false;}
+  if(u.role==='viewer'){toast('Insufficient permissions','err');return false;}
+  return true;
+}
+function canEditSilent(){
+  if(isViewer) return false;
+  const u=window.__currentUser;
+  return u&&(u.role==='admin'||u.role==='editor');
+}
+window.addEventListener('auth-changed',e=>{
+  const user=e.detail;
+  if(user){isViewer=false;showApp(user);}
+  else if(!isViewer) showLogin();
 });
-
-async function saveSchedule() {
-  const dateVal = document.getElementById('scheduleDateInput').value;
-  if (!dateVal) { showToast('Set a date first', true); return; }
-  const data = {
-    date: dateVal,
-    savedAt: new Date().toISOString(),
-    allPairs, disbandedPairs, schedule,
-    feederCounter
-  };
-  if (firebaseReady) {
-    try {
-      showLoading(true);
-      const { doc, setDoc, collection } = window.__fsOps;
-      await setDoc(doc(window.__db, 'schedules', dateVal), data);
-      showToast('✓ Saved to Firebase');
-    } catch(e) {
-      console.error(e);
-      showToast('Firebase save failed — saved locally', true);
-      localStorage.setItem('schedule_' + dateVal, JSON.stringify(data));
-    } finally { showLoading(false); }
-  } else {
-    localStorage.setItem('schedule_' + dateVal, JSON.stringify(data));
-    showToast('✓ Saved locally (Firebase not connected)');
-  }
-}
-
-async function loadScheduleByDate(dateVal) {
-  if (firebaseReady) {
-    try {
-      showLoading(true);
-      const { doc, getDoc } = window.__fsOps;
-      const snap = await getDoc(doc(window.__db, 'schedules', dateVal));
-      if (snap.exists()) return snap.data();
-    } catch(e) {
-      console.error(e);
-    } finally { showLoading(false); }
-  }
-  const local = localStorage.getItem('schedule_' + dateVal);
-  return local ? JSON.parse(local) : null;
-}
-
-async function loadAllHistory() {
-  let results = [];
-  if (firebaseReady) {
-    try {
-      const { getDocs, collection, query, orderBy } = window.__fsOps;
-      const q = query(collection(window.__db, 'schedules'), orderBy('date','desc'));
-      const snap = await getDocs(q);
-      snap.forEach(d => results.push(d.data()));
-      return results;
-    } catch(e) { console.error(e); }
-  }
-  // Fallback: scan localStorage
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k.startsWith('schedule_')) {
-      try { results.push(JSON.parse(localStorage.getItem(k))); } catch(e){}
-    }
-  }
-  results.sort((a,b) => b.date.localeCompare(a.date));
-  return results;
-}
-
-async function deleteSchedule(dateVal) {
-  if (!confirm('Delete schedule for ' + dateVal + '?')) return;
-  if (firebaseReady) {
-    try {
-      const { doc, deleteDoc } = window.__fsOps;
-      await deleteDoc(doc(window.__db, 'schedules', dateVal));
-    } catch(e) { console.error(e); }
-  }
-  localStorage.removeItem('schedule_' + dateVal);
-  showHistoryModal();
-  showToast('Schedule deleted');
-}
-
-// ══════════════════════════════════════════════════════
-// DATE
-// ══════════════════════════════════════════════════════
-function updateDateDisplay() {
-  const val = document.getElementById('scheduleDateInput').value;
-  if (!val) { document.getElementById('dateDisplay').textContent = '—'; return; }
-  const d = new Date(val + 'T12:00:00');
-  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  document.getElementById('dateDisplay').textContent =
-    `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('scheduleDateInput').value = today;
-  updateDateDisplay();
+window.addEventListener('firebase-ready',()=>{
+  fbReady=true;
+  document.getElementById('fbstat').textContent='● FIREBASE';
+  document.getElementById('fbstat').className='fbstat on';
 });
+async function doLogin(){
+  const em=document.getElementById('lemail').value.trim();
+  const pw=document.getElementById('lpass').value;
+  const err=document.getElementById('lerr');
+  const btn=document.getElementById('lbtn');
+  err.classList.remove('show');
+  if(!em||!pw){err.textContent='Enter email and password.';err.classList.add('show');return;}
+  btn.disabled=true;btn.textContent='Signing in…';
+  try{
+    const{signInWithEmailAndPassword}=window.__fbOps;
+    await signInWithEmailAndPassword(window.__auth,em,pw);
+  }catch(e){
+    let msg='Invalid email or password.';
+    if(e.code==='auth/too-many-requests') msg='Too many attempts. Try later.';
+    err.textContent=msg;err.classList.add('show');
+    btn.disabled=false;btn.textContent='🔐 Sign In';
+  }
+}
+function enterViewer(){isViewer=true;showApp(null);}
+function showLoginFromViewer(){isViewer=false;document.getElementById('mainApp').classList.add('hidden');document.getElementById('loginScreen').style.display='flex';}
+async function doLogout(){
+  try{if(!isViewer&&window.__auth){const{signOut}=window.__fbOps;await signOut(window.__auth);}}catch(e){}
+  isViewer=false;window.__currentUser=null;showLogin();
+}
+function showLogin(){
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('loginScreen').style.display='flex';
+  const b=document.getElementById('lbtn');b.disabled=false;b.textContent='🔐 Sign In';
+}
+function showApp(user){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('mainApp').classList.remove('hidden');
+  const ed=isViewer?false:user&&(user.role==='admin'||user.role==='editor');
+  document.getElementById('vbanner').classList.toggle('hidden',!isViewer&&!!user);
+  document.getElementById('uemail').textContent=(isViewer||!user)?'guest':user.email.split('@')[0];
+  const role=isViewer?'viewer':(user?.role||'viewer');
+  document.getElementById('rbadge').textContent=role.toUpperCase();
+  document.getElementById('rbadge').className='rbadge '+role;
+  document.getElementById('blogout').textContent=isViewer?'↩ EXIT':'↩ LOGOUT';
+  ['bsave','bclear','bauto','breset'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=!ed;});
+  document.getElementById('baddv').disabled=!ed;
+  document.getElementById('uz').style.cursor=ed?'pointer':'default';
+  initSchedKeys(); updateDate(); renderAFBtns();
+}
 
-// ══════════════════════════════════════════════════════
-// UPLOAD
-// ══════════════════════════════════════════════════════
-function handlePairsUpload(input) {
-  const file = input.files[0];
-  if (!file) return;
-  showLoading(true);
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const wb   = XLSX.read(e.target.result, { type:'array' });
-      const ws   = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
-      allPairs = []; disbandedPairs = [];
-      let pairId = 1, startRow = 0, col1 = 0, col2 = 1;
-      if (rows.length > 0) {
-        const fr = rows[0].map(c => String(c).toLowerCase());
-        const hw = ['name','staff','pair','person','member','enumerator','field'];
-        if (fr.some(c => hw.some(w => c.includes(w)))) {
-          startRow = 1;
-          fr.forEach((c,i) => {
-            if (hw.some(w => c.includes(w))) {
-              if (col1 === 0 && i >= 0) col1 = i;
-              else if (col2 <= 1 && i > col1) col2 = i;
-            }
-          });
-        }
+// ── DATE ──────────────────────────────────────────
+function updateDate(){
+  const v=document.getElementById('datein').value;
+  if(!v){document.getElementById('dchip').textContent='—';return;}
+  const d=new Date(v+'T12:00:00');
+  const D=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('dchip').textContent=`${D[d.getDay()]} ${d.getDate()} ${M[d.getMonth()]} ${d.getFullYear()}`;
+}
+window.addEventListener('DOMContentLoaded',()=>{document.getElementById('datein').value=new Date().toISOString().split('T')[0];updateDate();});
+
+// ── FIREBASE DB ───────────────────────────────────
+function initSchedKeys(){vehicles.forEach(v=>{if(!schedule[v.id])schedule[v.id]={feeders:[]};});}
+async function saveSchedule(){
+  if(!canEdit())return;
+  const dv=document.getElementById('datein').value;
+  if(!dv){toast('Set a date first','err');return;}
+  const data={date:dv,savedAt:new Date().toISOString(),allPairs,disbandedPairs,schedule,vehicles,feederCtr};
+  if(fbReady){
+    try{showLoad(true);const{doc,setDoc}=window.__fbOps;await setDoc(doc(window.__db,'schedules',dv),data);toast('✓ Saved to Firebase');}
+    catch(e){localStorage.setItem('s_'+dv,JSON.stringify(data));toast('Saved locally (Firebase error)','warn');}
+    finally{showLoad(false);}
+  }else{localStorage.setItem('s_'+dv,JSON.stringify(data));toast('✓ Saved locally');}
+}
+async function loadByDate(dv){
+  if(fbReady){try{showLoad(true);const{doc,getDoc}=window.__fbOps;const s=await getDoc(doc(window.__db,'schedules',dv));if(s.exists())return s.data();}catch(e){}finally{showLoad(false);}}
+  const l=localStorage.getItem('s_'+dv);return l?JSON.parse(l):null;
+}
+async function loadAllHist(){
+  let r=[];
+  if(fbReady){try{const{getDocs,collection,query,orderBy}=window.__fbOps;const q=query(collection(window.__db,'schedules'),orderBy('date','desc'));const s=await getDocs(q);s.forEach(d=>r.push(d.data()));return r;}catch(e){}}
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith('s_')){try{r.push(JSON.parse(localStorage.getItem(k)));}catch(e){}}}
+  r.sort((a,b)=>b.date.localeCompare(a.date));return r;
+}
+async function delSched(dv){
+  if(!canEdit())return;
+  if(!confirm('Delete schedule for '+dv+'?'))return;
+  if(fbReady){try{const{doc,deleteDoc}=window.__fbOps;await deleteDoc(doc(window.__db,'schedules',dv));}catch(e){}}
+  localStorage.removeItem('s_'+dv);toast('Deleted');showHistory();
+}
+
+// ── UPLOAD ────────────────────────────────────────
+function handleUpload(input){
+  if(!canEdit())return;
+  const file=input.files[0];if(!file)return;showLoad(true);
+  const r=new FileReader();
+  r.onload=function(e){
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      allPairs=[];disbandedPairs=[];
+      let pid=1,sr=0,c1=0,c2=1;
+      if(rows.length>0){
+        const fr=rows[0].map(c=>String(c).toLowerCase());
+        const hw=['name','staff','pair','person','member','enumerator','field'];
+        if(fr.some(c=>hw.some(w=>c.includes(w)))){sr=1;fr.forEach((c,i)=>{if(hw.some(w=>c.includes(w))){if(c1===0&&i>=0)c1=i;else if(c2<=1&&i>c1)c2=i;}});}
       }
-      for (let i = startRow; i < rows.length; i++) {
-        const row = rows[i];
-        const n1 = String(row[col1]||'').trim();
-        const n2 = String(row[col2]||'').trim();
-        if (!n1 && !n2) continue;
-        allPairs.push({ id:pairId++, name1:n1||'—', name2:n2||'—', disbanded:false });
+      for(let i=sr;i<rows.length;i++){
+        const row=rows[i];const n1=String(row[c1]||'').trim();const n2=String(row[c2]||'').trim();
+        if(!n1&&!n2)continue;allPairs.push({id:pid++,name1:n1||'—',name2:n2||'—',disbanded:false});
       }
-      filteredPairs = [...allPairs];
-      document.getElementById('uploadZone').classList.add('has-file');
-      document.getElementById('uploadStatus').innerHTML =
-        `<span style="color:var(--accent3)">✓ ${file.name}</span><br>${allPairs.length} pairs loaded`;
-      renderPairsList();
-      showToast(`✓ ${allPairs.length} pairs loaded`);
-      if (!boardStarted) initBoard();
-    } catch(err) { showToast('Failed to read file: ' + err.message, true); }
-    showLoading(false);
-    input.value = '';
+      filteredPairs=[...allPairs];
+      document.getElementById('uz').classList.add('hf');
+      document.getElementById('ustat').innerHTML=`<span style="color:var(--c3)">✓ ${file.name}</span><br>${allPairs.length} pairs`;
+      renderPairs();toast(`✓ ${allPairs.length} pairs loaded`);
+      if(!boardStarted)initBoard();
+    }catch(err){toast('File error: '+err.message,'err');}
+    showLoad(false);input.value='';
   };
-  reader.readAsArrayBuffer(file);
+  r.readAsArrayBuffer(file);
 }
 
-// ══════════════════════════════════════════════════════
-// PAIRS LIST
-// ══════════════════════════════════════════════════════
-function switchTab(tab) {
-  activeTab = tab;
-  document.getElementById('tab-pairs').className = 'pair-tab' + (tab==='pairs'?' active':'');
-  document.getElementById('tab-individuals').className = 'pair-tab' + (tab==='individuals'?' active':'');
-  renderPairsList();
+// ── PAIRS LIST ────────────────────────────────────
+function switchTab(t){
+  activeTab=t;
+  document.getElementById('tp').className='ptab'+(t==='pairs'?' active':'');
+  document.getElementById('ts').className='ptab'+(t==='solo'?' active':'');
+  renderPairs();
 }
-
-function renderPairsList() {
-  const container = document.getElementById('pairsList');
-  const assignedIds = getAssignedPairIds();
-
-  if (activeTab === 'pairs') {
-    const list = filteredPairs.filter(p => !p.disbanded);
-    if (!list.length) {
-      container.innerHTML = '<div style="padding:16px;text-align:center;font-size:11px;color:var(--text3);">No pairs found</div>';
-      return;
-    }
-    container.innerHTML = list.map(p => {
-      const isAssigned = assignedIds.has('p_' + p.id);
-      return `<div class="pair-card ${isAssigned?'assigned':''}"
-        id="pair-p_${p.id}" draggable="${!isAssigned}"
-        ondragstart="onDragStart(event,'p_${p.id}')" ondragend="onDragEnd(event)">
-        <div class="pair-num">PAIR ${String(p.id).padStart(2,'0')}</div>
-        <div class="pair-names">${escHtml(p.name1)}<br><span class="name2">${escHtml(p.name2)}</span></div>
-        ${isAssigned ? '<div class="pair-badge assigned">ASSIGNED</div>' : ''}
-        <div class="pair-actions">
-          <button class="pair-action-btn disband-btn" onclick="openDisbandModal(${p.id})">✂️ DISBAND</button>
-        </div>
+function renderPairs(){
+  const c=document.getElementById('plist');
+  const asgn=getAssigned();const ed=canEditSilent();
+  if(activeTab==='pairs'){
+    const list=filteredPairs.filter(p=>!p.disbanded);
+    if(!list.length){c.innerHTML='<div style="padding:12px;text-align:center;font-size:10px;color:var(--tx3);">No pairs found</div>';return;}
+    c.innerHTML=list.map(p=>{
+      const isA=asgn.has('p_'+p.id);
+      return`<div class="pcard ${isA?'asgn':''} ${!ed?'ndrag':''}" id="pc-p_${p.id}" draggable="${ed&&!isA}" ondragstart="DS(event,'p_${p.id}')" ondragend="DE()">
+        <div class="pn">PAIR ${String(p.id).padStart(2,'0')}</div>
+        <div class="pnames">${x(p.name1)}<br><span class="n2">${x(p.name2)}</span></div>
+        ${isA?'<div class="pbadge a">ASSIGNED</div>':''}
+        ${ed?`<div class="pacts"><button class="pabtn dbtn" onclick="openDis(${p.id})">✂️ DISBAND</button></div>`:''}
       </div>`;
     }).join('');
-  } else {
-    // Solo individuals from disbanded pairs
-    const individuals = getIndividuals();
-    if (!individuals.length) {
-      container.innerHTML = '<div style="padding:16px;text-align:center;font-size:11px;color:var(--text3);">No solo enumerators.<br>Disband pairs to get individuals.</div>';
-      return;
-    }
-    container.innerHTML = individuals.map(ind => {
-      const isAssigned = assignedIds.has('i_' + ind.id);
-      return `<div class="individual-card ${isAssigned?'assigned':''}"
-        id="pair-i_${ind.id}" draggable="${!isAssigned}"
-        ondragstart="onDragStart(event,'i_${ind.id}')" ondragend="onDragEnd(event)">
-        <div class="individual-tag">SOLO — from pair ${ind.fromPair}</div>
-        <div class="individual-name">${escHtml(ind.name)}</div>
-        ${isAssigned ? '<div class="pair-badge assigned" style="top:5px;right:7px;">ASSIGNED</div>' : ''}
+  }else{
+    const inds=allInds();
+    if(!inds.length){c.innerHTML='<div style="padding:12px;text-align:center;font-size:10px;color:var(--tx3);">No solo enumerators.<br>Disband pairs to see them here.</div>';return;}
+    c.innerHTML=inds.map(ind=>{
+      const isA=asgn.has(ind.id);
+      return`<div class="icard ${isA?'asgn':''} ${!ed?'ndrag':''}" id="pc-${ind.id}" draggable="${ed&&!isA}" ondragstart="DS(event,'${ind.id}')" ondragend="DE()">
+        <div class="itag">SOLO — from pair ${ind.fromPair}</div>
+        <div class="iname">${x(ind.name)}</div>
+        ${isA?'<div class="pbadge a" style="top:5px;right:7px;">ASSIGNED</div>':''}
+        ${ed?`<div class="pacts"><button class="pabtn rbtn" onclick="restorePair(${ind.fromPair})">🔁 RESTORE</button></div>`:''}
       </div>`;
     }).join('');
   }
 }
+function filterPairs(q){
+  q=q.toLowerCase().trim();
+  filteredPairs=q?allPairs.filter(p=>p.name1.toLowerCase().includes(q)||p.name2.toLowerCase().includes(q)||String(p.id).includes(q)):[...allPairs];
+  renderPairs();
+}
+function getAssigned(){const s=new Set();Object.values(schedule).forEach(v=>v.feeders.forEach(f=>f.pairs.forEach(p=>s.add(String(p)))));return s;}
+function allInds(){return disbandedPairs.flatMap(d=>d.persons);}
 
-function getIndividuals() {
-  const result = [];
-  disbandedPairs.forEach(dp => {
-    dp.persons.forEach(person => result.push(person));
-  });
-  return result;
+// ── DISBAND ───────────────────────────────────────
+function openDis(pid){
+  if(!canEdit())return;
+  const pair=allPairs.find(p=>p.id===pid);if(!pair)return;
+  pendingDis=pid;
+  const opts=buildFOpts();
+  document.getElementById('disbody').innerHTML=`
+    <p style="font-size:11px;color:var(--tx2);margin-bottom:12px;">Disbanding <strong style="color:var(--tx)">${x(pair.name1)} & ${x(pair.name2)}</strong> creates two solo enumerators assignable independently.</p>
+    <div class="drow"><span style="font-size:13px;">👤</span><div style="flex:1;font-size:12px;font-weight:600;color:var(--tx);">${x(pair.name1)}</div>
+      <select class="fselect" id="dp1" style="max-width:230px;font-size:10px;padding:6px 8px;"><option value="">— Unassigned —</option>${opts}</select></div>
+    <div class="drow"><span style="font-size:13px;">👤</span><div style="flex:1;font-size:12px;font-weight:600;color:var(--tx);">${x(pair.name2)}</div>
+      <select class="fselect" id="dp2" style="max-width:230px;font-size:10px;padding:6px 8px;"><option value="">— Unassigned —</option>${opts}</select></div>`;
+  document.getElementById('disMod').classList.remove('hidden');
+}
+function buildFOpts(){
+  let o='';
+  vehicles.forEach(v=>{if(v.status!=='active')return;schedule[v.id]?.feeders.forEach(f=>{o+=`<option value="${v.id}::${f.id}">${v.icon} ${v.name} → ${f.name||'(unnamed)'}</option>`;});});
+  return o;
+}
+function confirmDisband(){
+  const pair=allPairs.find(p=>p.id===pendingDis);if(!pair)return;
+  const s1=document.getElementById('dp1')?.value||'';
+  const s2=document.getElementById('dp2')?.value||'';
+  pair.disbanded=true;
+  Object.values(schedule).forEach(v=>v.feeders.forEach(f=>{f.pairs=f.pairs.filter(p=>String(p)!=='p_'+pair.id);}));
+  const b=Date.now();
+  const i1={id:'i_'+b,name:pair.name1,fromPair:pair.id};
+  const i2={id:'i_'+(b+1),name:pair.name2,fromPair:pair.id};
+  disbandedPairs.push({originalId:pair.id,persons:[i1,i2]});
+  if(s1)assignToFeeder(i1.id,s1);if(s2)assignToFeeder(i2.id,s2);
+  CM('disMod');renderBoard();renderPairs();updateStats();
+  toast(`✓ Disbanded — ${pair.name1} & ${pair.name2}`);
+}
+function assignToFeeder(iid,path){
+  const[vid,fid]=path.split('::');
+  const f=schedule[vid]?.feeders.find(f=>f.id===fid);
+  if(f&&!f.pairs.includes(iid))f.pairs.push(iid);
+}
+function restorePair(pid){
+  if(!canEdit())return;
+  const pair=allPairs.find(p=>p.id===pid);if(!pair)return;
+  const idx=disbandedPairs.findIndex(d=>d.originalId===pid);if(idx===-1)return;
+  disbandedPairs[idx].persons.forEach(ind=>Object.values(schedule).forEach(v=>v.feeders.forEach(f=>{f.pairs=f.pairs.filter(p=>String(p)!==ind.id);})));
+  disbandedPairs.splice(idx,1);pair.disbanded=false;
+  filteredPairs=[...allPairs];renderBoard();renderPairs();updateStats();
+  toast(`✓ Restored: ${pair.name1} & ${pair.name2}`);
 }
 
-function filterPairs(query) {
-  const q = query.toLowerCase().trim();
-  if (!q) { filteredPairs = [...allPairs]; }
-  else {
-    filteredPairs = allPairs.filter(p =>
-      p.name1.toLowerCase().includes(q) ||
-      p.name2.toLowerCase().includes(q) ||
-      String(p.id).includes(q)
-    );
-  }
-  renderPairsList();
-}
-
-function getAssignedPairIds() {
-  const ids = new Set();
-  Object.values(schedule).forEach(v =>
-    v.feeders.forEach(f =>
-      f.pairs.forEach(pid => ids.add(pid))
-    )
-  );
-  return ids;
-}
-
-// ══════════════════════════════════════════════════════
-// DISBAND
-// ══════════════════════════════════════════════════════
-function openDisbandModal(pairId) {
-  const pair = allPairs.find(p => p.id === pairId);
-  if (!pair) return;
-  pendingDisbandId = pairId;
-
-  // Build feeder options for reassignment
-  const feederOpts = buildFeederOptions();
-
-  document.getElementById('disbandModalBody').innerHTML = `
-    <div class="disband-form">
-      <p style="font-size:11px;color:var(--text2);margin-bottom:4px;">
-        Disbanding <strong style="color:var(--text)">${escHtml(pair.name1)} & ${escHtml(pair.name2)}</strong> will create two solo enumerators that can each be assigned independently to any feeder.
-      </p>
-      <div>
-        <div class="form-label">Reassign ${escHtml(pair.name1)}</div>
-        <div class="person-reassign">
-          <div class="person-name">👤 ${escHtml(pair.name1)}</div>
-          <select class="reassign-select" id="reassign-p1">
-            <option value="">— Leave unassigned —</option>
-            ${feederOpts}
-          </select>
+// ── VEHICLE MANAGER ───────────────────────────────
+function showVehicleManager(){renderVM();document.getElementById('vmMod').classList.remove('hidden');}
+function renderVM(){
+  const ed=canEditSilent();
+  document.getElementById('vmbody').innerHTML=vehicles.map(v=>{
+    const sl={active:'✅ Active',fault:'🔴 Fault / Breakdown',maintenance:'🟠 Maintenance'}[v.status];
+    return`<div class="vmcard ${v.status!=='active'?'unav':''}">
+      <div style="display:flex;align-items:flex-start;gap:9px;flex:1;">
+        <div style="font-size:24px;line-height:1;">${v.icon}</div>
+        <div style="flex:1;">
+          <div class="vmname">${x(v.name)}</div>
+          <div class="vminfo">Driver: ${x(v.driver)} · Cap: ${v.capacity} seats${v.reason?`<br><span style="color:var(--cw);">⚠ ${x(v.reason)}</span>`:''}</div>
         </div>
+        <span class="vmbadge ${v.status}">${sl}</span>
       </div>
-      <div>
-        <div class="form-label">Reassign ${escHtml(pair.name2)}</div>
-        <div class="person-reassign">
-          <div class="person-name">👤 ${escHtml(pair.name2)}</div>
-          <select class="reassign-select" id="reassign-p2">
-            <option value="">— Leave unassigned —</option>
-            ${feederOpts}
-          </select>
-        </div>
-      </div>
+      ${ed?`<div style="display:flex;flex-direction:column;gap:4px;margin-left:5px;">
+        <button class="btn bh sm" onclick="openEditV('${v.id}')">✏️ EDIT</button>
+        <button class="btn bh sm" onclick="openStat('${v.id}')">🔄 STATUS</button>
+        ${vehicles.length>1?`<button class="btn br sm" onclick="removeV('${v.id}')">🗑</button>`:''}
+      </div>`:''}
     </div>`;
-  document.getElementById('disbandModal').classList.remove('hidden');
+  }).join('');
+  document.getElementById('baddv').disabled=!ed;
+}
+function showAddVehicle(){
+  if(!canEdit())return;editVid=null;
+  document.getElementById('avttl').textContent='➕ Add Vehicle';
+  ['vfname','vfico','vfcap','vfdrv','vfreason'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('vfico').value='🚐';document.getElementById('vfcap').value='8';
+  document.getElementById('vfstat').value='active';
+  document.getElementById('vfrrow').classList.add('hidden');
+  document.getElementById('avMod').classList.remove('hidden');
+}
+function openEditV(vid){
+  if(!canEdit())return;editVid=vid;
+  const v=vehicles.find(x=>x.id===vid);if(!v)return;
+  document.getElementById('avttl').textContent='✏️ Edit Vehicle';
+  document.getElementById('vfname').value=v.name;document.getElementById('vfico').value=v.icon;
+  document.getElementById('vfcap').value=v.capacity;document.getElementById('vfdrv').value=v.driver;
+  document.getElementById('vfstat').value=v.status;document.getElementById('vfreason').value=v.reason||'';
+  document.getElementById('vfrrow').classList.toggle('hidden',v.status==='active');
+  document.getElementById('avMod').classList.remove('hidden');
+}
+function saveVehicle(){
+  const name=document.getElementById('vfname').value.trim();
+  if(!name){toast('Enter vehicle name','err');return;}
+  const vData={name,icon:document.getElementById('vfico').value.trim()||'🚐',capacity:parseInt(document.getElementById('vfcap').value)||8,driver:document.getElementById('vfdrv').value.trim(),status:document.getElementById('vfstat').value,reason:document.getElementById('vfreason').value.trim()};
+  if(editVid){const v=vehicles.find(x=>x.id===editVid);if(v)Object.assign(v,vData);}
+  else{const nid='v'+Date.now();vehicles.push({id:nid,...vData});schedule[nid]={feeders:[]};}
+  CM('avMod');renderVM();renderBoard();renderAFBtns();toast(editVid?'✓ Updated':'✓ Vehicle added');
+}
+function removeV(vid){
+  if(!canEdit())return;
+  const v=vehicles.find(x=>x.id===vid);if(!v)return;
+  const has=schedule[vid]?.feeders.some(f=>f.pairs.length>0);
+  if(!confirm(`Remove ${v.name}?${has?' All assignments lost!':''}`))return;
+  vehicles=vehicles.filter(x=>x.id!==vid);delete schedule[vid];
+  renderVM();renderBoard();renderAFBtns();toast(`${v.name} removed`,'warn');
+}
+function openStat(vid){
+  if(!canEdit())return;pendingStat=vid;
+  const v=vehicles.find(x=>x.id===vid);if(!v)return;
+  document.getElementById('stttl').textContent='Status — '+v.name;
+  document.getElementById('smstat').value=v.status;document.getElementById('smreason').value=v.reason||'';
+  document.getElementById('smrrow').classList.toggle('hidden',v.status==='active');
+  document.getElementById('stMod').classList.remove('hidden');
+}
+function confirmStatus(){
+  const v=vehicles.find(x=>x.id===pendingStat);if(!v)return;
+  v.status=document.getElementById('smstat').value;v.reason=document.getElementById('smreason').value.trim();
+  CM('stMod');renderBoard();renderVM();
+  const lbl={active:'Active ✅',fault:'FAULT 🔴',maintenance:'MAINTENANCE 🟠'};
+  toast(`${v.name} → ${lbl[v.status]}`);
+}
+function toggleRR(rowId,selId){
+  const v=document.getElementById(selId).value;
+  document.getElementById(rowId).classList.toggle('hidden',v==='active');
 }
 
-function buildFeederOptions() {
-  let opts = '';
-  Object.entries(VEHICLES).forEach(([vKey, v]) => {
-    schedule[vKey].feeders.forEach(f => {
-      const name = f.name || `Feeder (unnamed)`;
-      opts += `<option value="${vKey}::${f.id}">${v.icon} ${v.label} → ${name}</option>`;
-    });
-  });
-  return opts;
+// ── BOARD ─────────────────────────────────────────
+function renderAFBtns(){
+  const c=document.getElementById('afbtns');if(!c)return;
+  const ed=canEditSilent();
+  c.innerHTML=vehicles.filter(v=>v.status==='active').map(v=>
+    `<button class="btn bh sm" ${!ed?'disabled':''} onclick="addFeeder('${v.id}')">+ ${v.icon} ${v.name.split(' ')[0]}</button>`
+  ).join('');
 }
-
-function confirmDisband() {
-  const pair = allPairs.find(p => p.id === pendingDisbandId);
-  if (!pair) return;
-
-  const sel1 = document.getElementById('reassign-p1')?.value || '';
-  const sel2 = document.getElementById('reassign-p2')?.value || '';
-
-  // Mark pair as disbanded
-  pair.disbanded = true;
-
-  // Remove pair from any feeder it was in
-  Object.values(schedule).forEach(v =>
-    v.feeders.forEach(f => { f.pairs = f.pairs.filter(pid => pid !== 'p_' + pair.id); })
-  );
-
-  // Create individual entries
-  const idBase = Date.now();
-  const ind1 = { id:'i_'+(idBase), name: pair.name1, fromPair: pair.id };
-  const ind2 = { id:'i_'+(idBase+1), name: pair.name2, fromPair: pair.id };
-
-  disbandedPairs.push({ originalId: pair.id, persons: [ind1, ind2] });
-
-  // Assign if selected
-  if (sel1) assignIndividualToFeeder(ind1.id, sel1);
-  if (sel2) assignIndividualToFeeder(ind2.id, sel2);
-
-  closeModal('disbandModal');
-  renderBoard();
-  renderPairsList();
-  updateStats();
-  showToast(`✓ Pair disbanded — ${pair.name1} & ${pair.name2} are now solo`);
+function initBoard(){
+  boardStarted=true;initSchedKeys();
+  document.getElementById('estate').classList.add('hidden');
+  const ba=document.getElementById('board');ba.classList.remove('hidden');ba.style.display='flex';
+  renderBoard();renderAFBtns();
 }
-
-function assignIndividualToFeeder(indId, feederPath) {
-  const [vKey, fId] = feederPath.split('::');
-  const feeder = schedule[vKey]?.feeders.find(f => f.id === fId);
-  if (feeder && !feeder.pairs.includes(indId)) feeder.pairs.push(indId);
+function resolveItem(pid){
+  const s=String(pid);
+  if(s.startsWith('i_')) return allInds().find(x=>x.id===s)||null;
+  return allPairs.find(p=>p.id===parseInt(s.replace('p_','')))||null;
 }
-
-function restorePair(pairId) {
-  const pair = allPairs.find(p => p.id === pairId);
-  if (!pair) return;
-
-  // Find disbanded entry
-  const disbIdx = disbandedPairs.findIndex(d => d.originalId === pairId);
-  if (disbIdx === -1) return;
-
-  const dp = disbandedPairs[disbIdx];
-  // Remove individuals from feeders
-  dp.persons.forEach(ind => {
-    Object.values(schedule).forEach(v =>
-      v.feeders.forEach(f => { f.pairs = f.pairs.filter(pid => pid !== ind.id); })
-    );
-  });
-
-  disbandedPairs.splice(disbIdx, 1);
-  pair.disbanded = false;
-  filteredPairs = [...allPairs];
-  renderBoard();
-  renderPairsList();
-  updateStats();
-  showToast(`✓ Pair restored: ${pair.name1} & ${pair.name2}`);
-}
-
-// ══════════════════════════════════════════════════════
-// BOARD
-// ══════════════════════════════════════════════════════
-function initBoard() {
-  boardStarted = true;
-  document.getElementById('emptyState').classList.add('hidden');
-  const boardArea = document.getElementById('boardArea');
-  boardArea.classList.remove('hidden');
-  boardArea.style.display = 'flex';
-  renderBoard();
-}
-
-function renderBoard() {
-  if (!boardStarted) return;
-  const container = document.getElementById('boardScroll');
-  container.innerHTML = Object.entries(VEHICLES).map(([vKey, v]) => {
-    const vData = schedule[vKey];
-    const pairCount = vData.feeders.reduce((s,f)=>s+f.pairs.length,0);
-    const isOver = pairCount > v.capacity;
-    return `<div class="vehicle-section">
-      <div class="vehicle-header ${v.cls}">
-        <div class="vehicle-info">
-          <div class="vehicle-icon">${v.icon}</div>
-          <div>
-            <div class="vehicle-name">${v.label}</div>
-            <div class="vehicle-meta">Driver: <strong>${v.driver}</strong></div>
-          </div>
+function renderBoard(){
+  if(!boardStarted)return;
+  const c=document.getElementById('bscroll');const ed=canEditSilent();
+  c.innerHTML=vehicles.map((v,i)=>{
+    const vd=schedule[v.id]||{feeders:[]};
+    const cnt=vd.feeders.reduce((s,f)=>s+f.pairs.length,0);
+    const ov=cnt>v.capacity;const unav=v.status!=='active';
+    const col=VCOLS[i%VCOLS.length];
+    return`<div class="vsec" id="vs-${v.id}">
+      ${unav?`
+        <div class="vstpill ${v.status==='maintenance'?'maint':''}">${v.status==='fault'?'🔴 VEHICLE FAULT / OUT OF SERVICE':'🟠 VEHICLE UNDER MAINTENANCE'}</div>
+        <div class="vuov">
+          <div class="vubig">${v.status==='fault'?'⚠ OUT OF SERVICE':'⚠ UNDER MAINTENANCE'}</div>
+          <div class="vureason">${x(v.reason||'No details provided')}</div>
+          ${ed?`<button class="btn bg sm" style="margin-top:5px;" onclick="openStat('${v.id}')">🔄 Update Status</button>`:''}
+        </div>`:''}
+      <div class="vhdr ${col}">
+        <div class="vinfo">
+          <div class="vico">${v.icon}</div>
+          <div><div class="vname">${x(v.name)}</div><div class="vmeta">Driver: <strong>${x(v.driver)}</strong> · Cap: ${v.capacity}</div></div>
         </div>
-        <div class="vehicle-header-actions">
-          <div class="vehicle-cap">
-            <span class="cap-num ${isOver?'over':'ok'}">${pairCount}</span>
-            <span>of ${v.capacity}</span>
-          </div>
-          <button class="btn btn-secondary" style="font-size:9px;padding:4px 9px;" onclick="addFeeder('${vKey}')">+ FEEDER</button>
+        <div class="vhacts">
+          <div class="vcap"><span class="cn ${ov?'ov':'ok'}">${cnt}</span><span>units</span></div>
+          ${ed&&!unav?`<button class="btn bh sm" onclick="addFeeder('${v.id}')">+ FEEDER</button>`:''}
+          ${ed?`<button class="btn bh sm" onclick="openStat('${v.id}')">🔄</button>`:''}
         </div>
       </div>
-      <div class="feeders-area" id="feeders-${vKey}">
-        ${vData.feeders.length === 0
-          ? `<div style="padding:10px;text-align:center;font-size:10px;color:var(--text3);">No feeders. Click "+ FEEDER" above.</div>`
-          : vData.feeders.map(f => renderFeederLane(vKey, f)).join('')
-        }
-        <button class="add-feeder-btn" onclick="addFeeder('${vKey}')">+ Add Feeder</button>
+      <div class="vbody" id="vb-${v.id}">
+        ${vd.feeders.length===0
+          ?`<div style="padding:7px;text-align:center;font-size:10px;color:var(--tx3);">${unav?'Vehicle unavailable.':'No feeders added.'}</div>`
+          :vd.feeders.map(f=>renderFL(v.id,f,ed&&!unav)).join('')}
+        ${ed&&!unav?`<button class="afbtn" onclick="addFeeder('${v.id}')">+ Add Feeder</button>`:''}
       </div>
     </div>`;
   }).join('');
   updateStats();
 }
-
-function getPairOrIndividual(pid) {
-  if (typeof pid === 'string' && pid.startsWith('i_')) {
-    const all = getIndividuals();
-    return all.find(ind => ind.id === pid) || null;
-  }
-  const numId = typeof pid === 'string' ? parseInt(pid.replace('p_','')) : pid;
-  return allPairs.find(p => p.id === numId) || null;
-}
-
-function renderFeederLane(vKey, feeder) {
-  const items = feeder.pairs.map(pid => {
-    if (typeof pid === 'string' && pid.startsWith('i_')) {
-      const inds = getIndividuals();
-      return { type:'individual', data: inds.find(i => i.id === pid) };
-    }
-    const numId = typeof pid === 'string' ? parseInt(pid.replace('p_','')) : pid;
-    return { type:'pair', data: allPairs.find(p => p.id === numId) };
-  }).filter(x => x.data);
-
-  const ongoing = feeder.ongoing || false;
-
-  return `<div class="feeder-lane" id="lane-${feeder.id}"
-    ondragover="onDragOver(event,'${feeder.id}')"
-    ondragleave="onDragLeave(event,'${feeder.id}')"
-    ondrop="onDrop(event,'${vKey}','${feeder.id}')">
-    <div class="feeder-lane-header">
-      <input class="feeder-name-input" type="text"
-        placeholder="Feeder name (e.g. Gwagwalada 33kV)"
-        value="${escHtml(feeder.name)}"
-        oninput="updateFeederName('${feeder.id}', this.value)">
-      <div class="feeder-actions">
-        <span class="ongoing-badge ${ongoing?'active':''}"
-          onclick="toggleOngoing('${vKey}','${feeder.id}')"
-          title="Mark as ongoing from previous day">
-          ${ongoing ? '🔄 ONGOING' : '⏸ ONGOING?'}
-        </span>
-        <span class="feeder-pairs-count">${items.length}</span>
-        <button class="remove-feeder-btn" onclick="removeFeeder('${vKey}','${feeder.id}')">✕</button>
+function renderFL(vid,f,ed){
+  const items=f.pairs.map(p=>resolveItem(p)).filter(Boolean);
+  const ong=f.ongoing||false;
+  return`<div class="flane" id="fl-${f.id}" ondragover="DO(event,'${f.id}')" ondragleave="DL(event,'${f.id}')" ondrop="DP(event,'${vid}','${f.id}')">
+    <div class="fhd">
+      <input class="fin" type="text" placeholder="Feeder name (e.g. Gwagwalada 33kV)" value="${x(f.name)}" ${!ed?'disabled':''} oninput="updFN('${f.id}',this.value)">
+      <div class="facts">
+        ${ed?`<span class="ontog ${ong?'on':'off'}" onclick="togOng('${vid}','${f.id}')">${ong?'🔄 ONGOING':'⏸ MARK ONGOING'}</span>`:''}
+        <span class="fcnt">${items.length}</span>
+        ${ed?`<button class="fdel" onclick="rmFeeder('${vid}','${f.id}')">✕</button>`:''}
       </div>
     </div>
-    <div class="feeder-drop-zone ${items.length===0?'empty':''}" id="dropzone-${feeder.id}">
-      ${items.length===0
-        ? '<span class="drop-hint">⇢ drag pairs / solo here</span>'
-        : items.map(item => {
-            if (item.type === 'individual') {
-              const ind = item.data;
-              return `<div class="assigned-chip individual-chip">
-                <div class="chip-names">
-                  <div class="chip-name1">👤 ${escHtml(ind.name)}</div>
-                  <div class="chip-name2">SOLO · pair ${ind.fromPair}</div>
-                </div>
-                <button class="chip-remove" onclick="unassignItem('${ind.id}','${feeder.id}')">✕</button>
-              </div>`;
-            } else {
-              const p = item.data;
-              return `<div class="assigned-chip">
-                <div class="chip-names">
-                  <div class="chip-name1">${escHtml(p.name1)}</div>
-                  <div class="chip-name2">${escHtml(p.name2)}</div>
-                </div>
-                <button class="chip-remove" onclick="unassignItem('p_${p.id}','${feeder.id}')">✕</button>
-              </div>`;
-            }
-          }).join('')
-      }
+    <div class="fdrop ${items.length===0?'emp':''}" id="fd-${f.id}">
+      ${items.length===0?'<span class="dhint">⇢ drag pairs / solo here</span>'
+        :items.map(item=>{
+          const isI=String(item.id||'').startsWith('i_');
+          const iid=isI?item.id:'p_'+item.id;
+          return`<div class="chip ${isI?'ich':''}">
+            <div>
+              <div class="cn1">${isI?'👤 ':''} ${x(isI?item.name:item.name1)}</div>
+              <div class="cn2">${isI?`SOLO · pair ${item.fromPair}`:x(item.name2)}</div>
+            </div>
+            <button class="crm" ${!ed?'disabled':''} onclick="unassign('${iid}','${f.id}')">✕</button>
+          </div>`;
+        }).join('')}
     </div>
   </div>`;
 }
 
-function toggleOngoing(vKey, fId) {
-  const feeder = schedule[vKey].feeders.find(f => f.id === fId);
-  if (feeder) feeder.ongoing = !feeder.ongoing;
+// ── FEEDER MANAGEMENT ─────────────────────────────
+function addFeeder(vid){
+  if(!canEdit())return;if(!boardStarted)initBoard();
+  if(!schedule[vid])schedule[vid]={feeders:[]};
+  feederCtr++;schedule[vid].feeders.push({id:`f${feederCtr}`,name:'',pairs:[],ongoing:false});
   renderBoard();
+  setTimeout(()=>{const ins=document.querySelectorAll(`#vb-${vid} .fin`);if(ins.length)ins[ins.length-1].focus();},60);
+}
+function rmFeeder(vid,fid){
+  if(!canEdit())return;
+  const f=schedule[vid]?.feeders.find(x=>x.id===fid);
+  if(f?.pairs.length>0&&!confirm(`Remove feeder? ${f.pairs.length} item(s) unassigned.`))return;
+  schedule[vid].feeders=schedule[vid].feeders.filter(x=>x.id!==fid);renderBoard();renderPairs();
+}
+function updFN(fid,n){Object.values(schedule).forEach(v=>{const f=v.feeders.find(x=>x.id===fid);if(f)f.name=n;});updateStats();}
+function unassign(iid,fid){
+  Object.values(schedule).forEach(v=>v.feeders.forEach(f=>{if(f.id===fid)f.pairs=f.pairs.filter(p=>String(p)!==String(iid));}));
+  renderBoard();renderPairs();
+}
+function togOng(vid,fid){if(!canEdit())return;const f=schedule[vid]?.feeders.find(x=>x.id===fid);if(f)f.ongoing=!f.ongoing;renderBoard();}
+function resetAll(){if(!canEdit())return;if(!confirm('Clear all assignments?'))return;Object.values(schedule).forEach(v=>v.feeders.forEach(f=>f.pairs=[]));renderBoard();renderPairs();}
+function clearAll(){
+  if(!canEdit())return;if(!confirm('Clear everything?'))return;
+  schedule={};allPairs=[];filteredPairs=[];disbandedPairs=[];boardStarted=false;
+  vehicles.forEach(v=>{schedule[v.id]={feeders:[]};});
+  document.getElementById('plist').innerHTML='<div style="padding:12px;text-align:center;font-size:10px;color:var(--tx3);">Upload pairs to begin</div>';
+  document.getElementById('uz').classList.remove('hf');document.getElementById('ustat').textContent='Upload pairing file (.xlsx)';
+  document.getElementById('estate').classList.remove('hidden');document.getElementById('board').classList.add('hidden');
 }
 
-// ══════════════════════════════════════════════════════
-// FEEDER MANAGEMENT
-// ══════════════════════════════════════════════════════
-function addFeeder(vKey) {
-  if (!boardStarted) initBoard();
-  feederCounter++;
-  schedule[vKey].feeders.push({ id:`f${feederCounter}`, name:'', pairs:[], ongoing:false });
-  renderBoard();
-  setTimeout(() => {
-    const inputs = document.querySelectorAll(`#feeders-${vKey} .feeder-name-input`);
-    if (inputs.length) inputs[inputs.length-1].focus();
-  }, 50);
+// ── AUTO ASSIGN ───────────────────────────────────
+function autoAssign(){
+  if(!canEdit())return;
+  const asgn=getAssigned();
+  const un=allPairs.filter(p=>!p.disbanded&&!asgn.has('p_'+p.id));
+  if(!un.length){toast('All pairs assigned');return;}
+  const lanes=[];vehicles.filter(v=>v.status==='active').forEach(v=>schedule[v.id]?.feeders.forEach(f=>lanes.push({vid:v.id,f})));
+  if(!lanes.length){toast('Add feeder lanes first','err');return;}
+  let i=0;un.forEach(p=>{const pid='p_'+p.id;if(!lanes[i%lanes.length].f.pairs.includes(pid))lanes[i%lanes.length].f.pairs.push(pid);i++;});
+  renderBoard();renderPairs();toast(`✓ ${un.length} pairs auto-assigned`);
 }
 
-function removeFeeder(vKey, fId) {
-  const feeder = schedule[vKey].feeders.find(f => f.id === fId);
-  if (feeder?.pairs.length > 0 && !confirm(`Remove feeder? ${feeder.pairs.length} item(s) will be unassigned.`)) return;
-  schedule[vKey].feeders = schedule[vKey].feeders.filter(f => f.id !== fId);
-  renderBoard(); renderPairsList();
+// ── DRAG & DROP ───────────────────────────────────
+function DS(event,iid){
+  if(!canEditSilent()){event.preventDefault();return;}
+  dragId=iid;let label;
+  if(String(iid).startsWith('i_')){const ind=allInds().find(x=>x.id===iid);label=ind?'👤 '+ind.name:iid;}
+  else{const p=allPairs.find(p=>p.id===parseInt(String(iid).replace('p_','')));label=p?`${p.name1} / ${p.name2}`:iid;}
+  event.dataTransfer.effectAllowed='move';
+  dragGhost=document.createElement('div');dragGhost.className='dghost';dragGhost.textContent=label;
+  document.body.appendChild(dragGhost);event.dataTransfer.setDragImage(dragGhost,0,0);
+  setTimeout(()=>document.getElementById(`pc-${iid}`)?.classList.add('asgn'),0);
 }
-
-function updateFeederName(fId, name) {
-  Object.values(schedule).forEach(v => {
-    const f = v.feeders.find(x => x.id === fId);
-    if (f) f.name = name;
+function DE(){
+  dragId=null;if(dragGhost){dragGhost.remove();dragGhost=null;}
+  document.querySelectorAll('.pcard.asgn,.icard.asgn').forEach(el=>{
+    const iid=el.id.replace('pc-','');
+    if(!getAssigned().has(iid))el.classList.remove('asgn');
   });
-  updateStats();
+  document.querySelectorAll('.flane.dover').forEach(el=>el.classList.remove('dover'));
+}
+function DO(event,fid){event.preventDefault();event.dataTransfer.dropEffect='move';document.getElementById(`fl-${fid}`)?.classList.add('dover');}
+function DL(event,fid){const l=document.getElementById(`fl-${fid}`);if(l&&!l.contains(event.relatedTarget))l.classList.remove('dover');}
+function DP(event,vid,fid){
+  event.preventDefault();document.getElementById(`fl-${fid}`)?.classList.remove('dover');
+  if(!dragId||!canEditSilent())return;
+  const iid=String(dragId);
+  Object.values(schedule).forEach(v=>v.feeders.forEach(f=>{f.pairs=f.pairs.filter(p=>String(p)!==iid);}));
+  const f=schedule[vid]?.feeders.find(f=>f.id===fid);
+  if(f&&!f.pairs.includes(iid))f.pairs.push(iid);
+  renderBoard();renderPairs();
 }
 
-function unassignItem(itemId, fId) {
-  Object.values(schedule).forEach(v =>
-    v.feeders.forEach(f => {
-      if (f.id === fId) f.pairs = f.pairs.filter(id => String(id) !== String(itemId));
-    })
-  );
-  renderBoard(); renderPairsList();
+// ── STATS ─────────────────────────────────────────
+function updateStats(){
+  const tot=allPairs.length;const dis=allPairs.filter(p=>p.disbanded).length;
+  const asgn=getAssigned().size;const act=allPairs.filter(p=>!p.disbanded).length;
+  const soloPend=allInds().filter(ind=>!getAssigned().has(ind.id)).length;
+  document.getElementById('sp').textContent=tot;document.getElementById('sd').textContent=dis;
+  document.getElementById('sa').textContent=asgn;document.getElementById('su').textContent=Math.max(0,act-asgn+soloPend);
 }
 
-function resetAssignments() {
-  if (!confirm('Clear all feeder assignments?')) return;
-  Object.values(schedule).forEach(v => v.feeders.forEach(f => f.pairs = []));
-  renderBoard(); renderPairsList();
-}
-
-function clearAll() {
-  if (!confirm('Clear everything?')) return;
-  schedule = { bus:{feeders:[]}, sharon1:{feeders:[]}, sharon2:{feeders:[]} };
-  allPairs = []; filteredPairs = []; disbandedPairs = [];
-  boardStarted = false;
-  document.getElementById('pairsList').innerHTML = '<div class="empty-state" style="padding:24px 16px;"><div class="big-icon" style="font-size:28px">📂</div><p style="font-size:10px;margin-top:6px;">Upload your pairing Excel file to begin</p></div>';
-  document.getElementById('uploadZone').classList.remove('has-file');
-  document.getElementById('uploadStatus').textContent = 'Upload pairing file (.xlsx)';
-  document.getElementById('emptyState').classList.remove('hidden');
-  document.getElementById('boardArea').classList.add('hidden');
-}
-
-// ══════════════════════════════════════════════════════
-// AUTO-ASSIGN
-// ══════════════════════════════════════════════════════
-function autoAssign() {
-  const assigned = getAssignedPairIds();
-  const unassigned = allPairs.filter(p => !p.disbanded && !assigned.has('p_' + p.id));
-  if (!unassigned.length) { showToast('All pairs already assigned'); return; }
-  const lanes = [];
-  Object.entries(schedule).forEach(([vKey, v]) => v.feeders.forEach(f => lanes.push({vKey, feeder:f})));
-  if (!lanes.length) { showToast('Add feeder lanes first', true); return; }
-  let i = 0;
-  unassigned.forEach(p => {
-    const pid = 'p_' + p.id;
-    if (!lanes[i % lanes.length].feeder.pairs.includes(pid))
-      lanes[i % lanes.length].feeder.pairs.push(pid);
-    i++;
-  });
-  renderBoard(); renderPairsList();
-  showToast(`✓ ${unassigned.length} pairs auto-assigned`);
-}
-
-// ══════════════════════════════════════════════════════
-// DRAG & DROP
-// ══════════════════════════════════════════════════════
-function onDragStart(event, itemId) {
-  dragPairId = itemId;
-  let label;
-  if (String(itemId).startsWith('i_')) {
-    const all = getIndividuals();
-    const ind = all.find(x => x.id === itemId);
-    label = ind ? '👤 ' + ind.name : itemId;
-  } else {
-    const numId = parseInt(String(itemId).replace('p_',''));
-    const pair = allPairs.find(p => p.id === numId);
-    label = pair ? `${pair.name1} / ${pair.name2}` : itemId;
-  }
-  event.dataTransfer.effectAllowed = 'move';
-  dragGhost = document.createElement('div');
-  dragGhost.className = 'drag-ghost';
-  dragGhost.textContent = label;
-  document.body.appendChild(dragGhost);
-  event.dataTransfer.setDragImage(dragGhost, 0, 0);
-  setTimeout(() => { document.getElementById(`pair-${itemId}`)?.classList.add('dragging'); }, 0);
-}
-
-function onDragEnd() {
-  dragPairId = null;
-  if (dragGhost) { dragGhost.remove(); dragGhost = null; }
-  document.querySelectorAll('.pair-card.dragging,.individual-card.dragging').forEach(el => el.classList.remove('dragging'));
-  document.querySelectorAll('.feeder-lane.drag-over').forEach(el => el.classList.remove('drag-over'));
-}
-
-function onDragOver(event, fId) {
-  event.preventDefault();
-  event.dataTransfer.dropEffect = 'move';
-  document.getElementById(`lane-${fId}`)?.classList.add('drag-over');
-}
-
-function onDragLeave(event, fId) {
-  const lane = document.getElementById(`lane-${fId}`);
-  if (lane && !lane.contains(event.relatedTarget)) lane.classList.remove('drag-over');
-}
-
-function onDrop(event, vKey, fId) {
-  event.preventDefault();
-  document.getElementById(`lane-${fId}`)?.classList.remove('drag-over');
-  if (!dragPairId) return;
-  const itemId = String(dragPairId);
-  // Remove from everywhere
-  Object.values(schedule).forEach(v =>
-    v.feeders.forEach(f => { f.pairs = f.pairs.filter(pid => String(pid) !== itemId); })
-  );
-  const feeder = schedule[vKey].feeders.find(f => f.id === fId);
-  if (feeder && !feeder.pairs.includes(itemId)) feeder.pairs.push(itemId);
-  renderBoard(); renderPairsList();
-}
-
-// ══════════════════════════════════════════════════════
-// STATS
-// ══════════════════════════════════════════════════════
-function updateStats() {
-  const total = allPairs.length;
-  const disbanded = allPairs.filter(p => p.disbanded).length;
-  const assigned = getAssignedPairIds().size;
-  const unassigned = allPairs.filter(p => !p.disbanded).length - assigned + disbandedPairs.reduce((s,dp) => s + dp.persons.filter(ind => !getAssignedPairIds().has(ind.id)).length, 0);
-  document.getElementById('statTotal').textContent = total;
-  document.getElementById('statDisbanded').textContent = disbanded;
-  document.getElementById('statAssigned').textContent = assigned;
-  document.getElementById('statUnassigned').textContent = Math.max(0, unassigned);
-  document.getElementById('statBus').textContent = schedule.bus.feeders.reduce((s,f)=>s+f.pairs.length,0);
-  document.getElementById('statS1').textContent = schedule.sharon1.feeders.reduce((s,f)=>s+f.pairs.length,0);
-  document.getElementById('statS2').textContent = schedule.sharon2.feeders.reduce((s,f)=>s+f.pairs.length,0);
-}
-
-// ══════════════════════════════════════════════════════
-// HISTORY MODAL
-// ══════════════════════════════════════════════════════
-async function showHistoryModal() {
-  document.getElementById('historyModal').classList.remove('hidden');
-  document.getElementById('historyModalBody').innerHTML =
-    '<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">Loading...</div>';
-  const history = await loadAllHistory();
-  if (!history.length) {
-    document.getElementById('historyModalBody').innerHTML =
-      '<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">No saved schedules found.</div>';
-    return;
-  }
-  document.getElementById('historyModalBody').innerHTML = history.map(s => {
-    const d = new Date(s.date + 'T12:00:00');
-    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const pairsCount = s.allPairs?.length || 0;
-    const assignedCount = Object.values(s.schedule||{}).reduce((sum,v) =>
-      sum + v.feeders.reduce((s2,f) => s2 + f.pairs.length, 0), 0);
-    const savedAt = s.savedAt ? new Date(s.savedAt).toLocaleString() : '';
-    return `<div class="history-item">
-      <div>
-        <div class="history-date">${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}</div>
-        <div class="history-meta">${pairsCount} pairs · ${assignedCount} assigned · saved ${savedAt}</div>
-      </div>
-      <div class="history-actions">
-        <button class="btn btn-secondary" style="font-size:9px;padding:4px 9px;" onclick="loadScheduleIntoApp('${s.date}')">📂 LOAD</button>
-        <button class="btn btn-warn" style="font-size:9px;padding:4px 9px;" onclick="loadAsTemplate('${s.date}')">🔄 CONTINUE</button>
-        <button class="btn btn-danger" style="font-size:9px;padding:4px 9px;" onclick="deleteSchedule('${s.date}')">🗑</button>
+// ── HISTORY ───────────────────────────────────────
+async function showHistory(){
+  document.getElementById('histMod').classList.remove('hidden');
+  document.getElementById('histbody').innerHTML='<div style="text-align:center;padding:22px;font-size:11px;color:var(--tx3);">Loading…</div>';
+  const hist=await loadAllHist();const ed=canEditSilent();
+  if(!hist.length){document.getElementById('histbody').innerHTML='<div style="text-align:center;padding:22px;font-size:11px;color:var(--tx3);">No saved schedules.</div>';return;}
+  const D=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('histbody').innerHTML=hist.map(s=>{
+    const d=new Date(s.date+'T12:00:00');
+    const pc=s.allPairs?.length||0;
+    const ac=Object.values(s.schedule||{}).reduce((sum,v)=>sum+v.feeders.reduce((s2,f)=>s2+f.pairs.length,0),0);
+    return`<div class="hi">
+      <div><div class="hdate">${D[d.getDay()]} ${d.getDate()} ${M[d.getMonth()]} ${d.getFullYear()}</div><div class="hmeta">${pc} pairs · ${ac} assigned</div></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;">
+        <button class="btn bh sm" onclick="loadSched('${s.date}')">📂 LOAD</button>
+        ${ed?`<button class="btn bw sm" onclick="contSched('${s.date}')">🔄 CONTINUE</button>`:''}
+        ${ed?`<button class="btn br sm" onclick="delSched('${s.date}')">🗑</button>`:''}
       </div>
     </div>`;
   }).join('');
 }
-
-async function loadScheduleIntoApp(dateVal) {
-  const data = await loadScheduleByDate(dateVal);
-  if (!data) { showToast('Schedule not found', true); return; }
-  allPairs       = data.allPairs || [];
-  disbandedPairs = data.disbandedPairs || [];
-  schedule       = data.schedule || { bus:{feeders:[]}, sharon1:{feeders:[]}, sharon2:{feeders:[]} };
-  feederCounter  = data.feederCounter || 0;
-  filteredPairs  = [...allPairs];
-  document.getElementById('scheduleDateInput').value = dateVal;
-  updateDateDisplay();
-  closeModal('historyModal');
-  document.getElementById('uploadZone').classList.add('has-file');
-  document.getElementById('uploadStatus').innerHTML =
-    `<span style="color:var(--accent2)">📂 Loaded: ${dateVal}</span><br>${allPairs.length} pairs`;
-  initBoard();
-  renderPairsList();
-  showToast(`✓ Schedule loaded: ${dateVal}`);
+async function loadSched(dv){const d=await loadByDate(dv);if(!d){toast('Not found','err');return;}applyData(d,dv);CM('histMod');toast(`✓ Loaded: ${dv}`);}
+async function contSched(dv){
+  if(!canEdit())return;const d=await loadByDate(dv);if(!d){toast('Not found','err');return;}
+  applyData(d,new Date().toISOString().split('T')[0]);
+  Object.values(schedule).forEach(v=>v.feeders.forEach(f=>{if(f.pairs.length>0)f.ongoing=true;}));
+  CM('histMod');renderBoard();renderPairs();toast(`✓ Continued from ${dv}`);
+}
+function applyData(d,dv){
+  allPairs=d.allPairs||[];disbandedPairs=d.disbandedPairs||[];schedule=d.schedule||{};
+  feederCtr=d.feederCtr||0;if(d.vehicles)vehicles=d.vehicles;filteredPairs=[...allPairs];
+  document.getElementById('datein').value=dv;updateDate();
+  document.getElementById('uz').classList.add('hf');
+  document.getElementById('ustat').innerHTML=`<span style="color:var(--c2)">📂 Loaded: ${dv}</span><br>${allPairs.length} pairs`;
+  initSchedKeys();initBoard();renderPairs();renderAFBtns();
 }
 
-async function loadAsTemplate(dateVal) {
-  // Load previous schedule but set date to today, mark all feeders as ongoing
-  const data = await loadScheduleByDate(dateVal);
-  if (!data) { showToast('Schedule not found', true); return; }
-  allPairs       = data.allPairs || [];
-  disbandedPairs = data.disbandedPairs || [];
-  schedule       = data.schedule || { bus:{feeders:[]}, sharon1:{feeders:[]}, sharon2:{feeders:[]} };
-  feederCounter  = data.feederCounter || 0;
-  filteredPairs  = [...allPairs];
-
-  // Mark all feeders that had pairs as ongoing
-  Object.values(schedule).forEach(v =>
-    v.feeders.forEach(f => { if (f.pairs.length > 0) f.ongoing = true; })
-  );
-
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('scheduleDateInput').value = today;
-  updateDateDisplay();
-  closeModal('historyModal');
-  document.getElementById('uploadZone').classList.add('has-file');
-  document.getElementById('uploadStatus').innerHTML =
-    `<span style="color:var(--accent)">🔄 Continued from: ${dateVal}</span><br>${allPairs.length} pairs`;
-  initBoard();
-  renderPairsList();
-  showToast(`✓ Continued from ${dateVal} — ongoing feeders marked`);
+// ── WHATSAPP TEXT ─────────────────────────────────
+function getDS(long=true){
+  const v=document.getElementById('datein').value;if(!v)return'Today';
+  const d=new Date(v+'T12:00:00');
+  const D=long?['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const M=long?['January','February','March','April','May','June','July','August','September','October','November','December']:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return`${D[d.getDay()]}, ${d.getDate()} ${M[d.getMonth()]} ${d.getFullYear()}`;
 }
-
-// ══════════════════════════════════════════════════════
-// WHATSAPP TEXT OUTPUT
-// ══════════════════════════════════════════════════════
-function getDateString(long=true) {
-  const val = document.getElementById('scheduleDateInput').value;
-  if (!val) return 'Today';
-  const d = new Date(val + 'T12:00:00');
-  const days = long
-    ? ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-    : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const months = long
-    ? ['January','February','March','April','May','June','July','August','September','October','November','December']
-    : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+function resLabel(pid){
+  const s=String(pid);
+  if(s.startsWith('i_')){const ind=allInds().find(x=>x.id===s);return ind?`👤 ${ind.name} (solo)`:s;}
+  const p=allPairs.find(p=>p.id===parseInt(s.replace('p_','')));return p?`${p.name1} & ${p.name2}`:s;
 }
-
-function resolveItemLabel(pid) {
-  const pidStr = String(pid);
-  if (pidStr.startsWith('i_')) {
-    const all = getIndividuals();
-    const ind = all.find(x => x.id === pidStr);
-    return ind ? `👤 ${ind.name} (solo)` : pidStr;
+function buildVText(v,vd){
+  let l=[];
+  l.push(`${v.icon} *${v.name.toUpperCase()} — DRIVER: ${v.driver}*`);
+  if(v.status!=='active'){
+    l.push(`⛔ *${v.status==='fault'?'VEHICLE FAULT / OUT OF SERVICE':'VEHICLE UNDER MAINTENANCE'}*`);
+    if(v.reason)l.push(`  Reason: ${v.reason}`);
+  }else{
+    l.push('━━━━━━━━━━━━━━━━━━━━━━');
+    if(!vd.feeders.length){l.push('_(No feeders assigned)_');}
+    else{vd.feeders.forEach((f,fi)=>{l.push('');l.push(`⚡ *${(f.name||`Feeder ${fi+1}`).toUpperCase()}*${f.ongoing?' 🔄 _(ONGOING)_':''}` );if(!f.pairs.length)l.push('  _(No pairs)_');else f.pairs.forEach((p,pi)=>l.push(`  ${pi+1}. ${resLabel(p)}`));});}
+    l.push('');l.push(`👥 Total: ${vd.feeders.reduce((s,f)=>s+f.pairs.length,0)} unit(s)`);
   }
-  const numId = parseInt(pidStr.replace('p_',''));
-  const pair = allPairs.find(p => p.id === numId);
-  return pair ? `${pair.name1} & ${pair.name2}` : pidStr;
+  return l.join('\n');
+}
+function buildAll(){
+  let l=[];l.push(`📅 *GIS ENUMERATION & ASSET MAPPING — DAILY SCHEDULE*`);l.push(`🗓 ${getDS()}`);l.push('');l.push('═══════════════════════════════');l.push('');
+  vehicles.forEach(v=>{l.push(buildVText(v,schedule[v.id]||{feeders:[]}));l.push('');});
+  const asgn=getAssigned().size;const un=allPairs.filter(p=>!p.disbanded&&!getAssigned().has('p_'+p.id));
+  l.push('═══════════════════════════════');l.push(`📊 *TOTAL DEPLOYED: ${asgn} units*`);
+  if(un.length){l.push(`⚠️ *UNASSIGNED: ${un.length} pairs*`);un.forEach(p=>l.push(`  • ${p.name1} & ${p.name2}`));}
+  return l.join('\n');
 }
 
-function buildVehicleText(vKey, includeHeader=true) {
-  const v = VEHICLES[vKey];
-  const vData = schedule[vKey];
-  const dateStr = getDateString();
-  let lines = [];
-  if (includeHeader) {
-    lines.push(`📅 *GIS ENUMERATION SCHEDULE*`);
-    lines.push(`🗓 ${dateStr}`);
-    lines.push('');
-  }
-  lines.push(`${v.icon} *${v.label.toUpperCase()} — DRIVER: ${v.driver}*`);
-  lines.push('━━━━━━━━━━━━━━━━━━━━━━');
-  if (!vData.feeders.length) {
-    lines.push('_(No feeders assigned)_');
-  } else {
-    vData.feeders.forEach((f,fi) => {
-      const feederName = f.name || `Feeder ${fi+1}`;
-      const ongoingTag = f.ongoing ? ' 🔄 _(ONGOING)_' : '';
-      lines.push('');
-      lines.push(`⚡ *${feederName.toUpperCase()}*${ongoingTag}`);
-      if (!f.pairs.length) {
-        lines.push('  _(No pairs assigned)_');
-      } else {
-        f.pairs.forEach((pid,pi) => {
-          lines.push(`  ${pi+1}. ${resolveItemLabel(pid)}`);
+// ── IMAGE GENERATION ──────────────────────────────
+function genImage(){
+  const W=820,DPR=2;
+  let H=84;
+  vehicles.forEach(v=>{H+=46;const vd=schedule[v.id]||{feeders:[]};if(v.status!=='active'){H+=62;}else{const fds=vd.feeders.filter(f=>f.pairs.length>0);H+=fds.length?fds.reduce((s,f)=>s+30+f.pairs.length*24+8,0):28;}H+=10;});
+  H+=36;
+  const cv=document.createElement('canvas');cv.width=W*DPR;cv.height=H*DPR;
+  const ctx=cv.getContext('2d');ctx.scale(DPR,DPR);
+  ctx.fillStyle='#070c18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(6,182,212,0.025)';ctx.lineWidth=1;
+  for(let xi=0;xi<W;xi+=48){ctx.beginPath();ctx.moveTo(xi,0);ctx.lineTo(xi,H);ctx.stroke();}
+  for(let yi=0;yi<H;yi+=48){ctx.beginPath();ctx.moveTo(0,yi);ctx.lineTo(W,yi);ctx.stroke();}
+  let y=0;
+  const hg=ctx.createLinearGradient(0,0,W,0);hg.addColorStop(0,'#0c1525');hg.addColorStop(1,'#091220');
+  ctx.fillStyle=hg;ctx.fillRect(0,y,W,74);
+  ctx.strokeStyle='#1a2e50';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,74);ctx.lineTo(W,74);ctx.stroke();
+  ctx.fillStyle='#f59e0b';ctx.font='bold 19px "Syne",sans-serif';ctx.fillText('⚡ GIS ENUMERATION SCHEDULE',22,y+28);
+  ctx.fillStyle='#06b6d4';ctx.font='600 11px "JetBrains Mono",monospace';ctx.fillText('🗓 '+getDS(),22,y+52);
+  ctx.fillStyle='#4a5a7a';ctx.font='10px "JetBrains Mono",monospace';
+  const genTxt='Generated: '+new Date().toLocaleString();ctx.fillText(genTxt,W-20-ctx.measureText(genTxt).width,y+52);
+  y=84;
+  vehicles.forEach((v,vi)=>{
+    const vd=schedule[v.id]||{feeders:[]};const clr=VCOLHEX[vi%VCOLHEX.length];const unav=v.status!=='active';
+    const vhg=ctx.createLinearGradient(0,y,W,y);vhg.addColorStop(0,h2r(clr,.16));vhg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=vhg;ctx.fillRect(10,y,W-20,42);ctx.strokeStyle='#1a2e50';ctx.lineWidth=1;ctx.strokeRect(10,y,W-20,42);
+    ctx.fillStyle='#e8f0fe';ctx.font='bold 13px "Syne",sans-serif';ctx.fillText(`${v.icon} ${v.name.toUpperCase()} — DRIVER: ${v.driver}`,22,y+26);
+    if(unav){
+      const lbl=v.status==='fault'?'⚠ FAULT / OUT OF SERVICE':'⚠ MAINTENANCE';
+      const lw=ctx.measureText(lbl).width;ctx.fillStyle='rgba(239,68,68,.92)';rr(ctx,W-22-lw-14,y+9,lw+14,22,5);ctx.fill();
+      ctx.fillStyle='#fff';ctx.font='bold 10px "JetBrains Mono",monospace';ctx.fillText(lbl,W-22-lw-7,y+23);
+      y+=42;
+      ctx.fillStyle='rgba(239,68,68,.07)';ctx.fillRect(10,y,W-20,52);ctx.strokeStyle='rgba(239,68,68,.28)';ctx.strokeRect(10,y,W-20,52);
+      ctx.fillStyle='#fca5a5';ctx.font='bold 12px "JetBrains Mono",monospace';ctx.fillText('⛔ '+(v.status==='fault'?'VEHICLE OUT OF SERVICE':'VEHICLE UNDER MAINTENANCE'),22,y+20);
+      ctx.fillStyle='#f97316';ctx.font='11px "JetBrains Mono",monospace';ctx.fillText(v.reason||'No details provided',22,y+38);
+      y+=62;
+    }else{
+      const tc=vd.feeders.reduce((s,f)=>s+f.pairs.length,0);
+      ctx.font='bold 11px "JetBrains Mono",monospace';ctx.fillStyle=clr;
+      const tw=ctx.measureText(tc+' units').width;ctx.fillText(tc+' units',W-22-tw,y+26);
+      y+=42;
+      const fds=vd.feeders.filter(f=>f.pairs.length>0);
+      if(!fds.length){ctx.fillStyle='#4a5a7a';ctx.font='11px "JetBrains Mono",monospace';ctx.fillText('No feeders assigned',22,y+16);y+=28;}
+      else{
+        fds.forEach(f=>{
+          ctx.fillStyle='#152035';ctx.fillRect(18,y,W-36,27);ctx.strokeStyle='#1a2e50';ctx.strokeRect(18,y,W-36,27);
+          ctx.fillStyle=clr;ctx.font='bold 10px "JetBrains Mono",monospace';
+          ctx.fillText(`⚡ ${(f.name||'Unnamed').toUpperCase()}${f.ongoing?' 🔄 ONGOING':''}`,28,y+18);y+=27;
+          f.pairs.forEach((pid,pi)=>{
+            ctx.fillStyle=pi%2===0?'#0f1828':'#0a1020';ctx.fillRect(18,y,W-36,24);
+            ctx.fillStyle='#4a5a7a';ctx.font='10px "JetBrains Mono",monospace';ctx.fillText(String(pi+1).padStart(2,'0')+'.',30,y+16);
+            ctx.fillStyle='#e8f0fe';ctx.font='11px "JetBrains Mono",monospace';ctx.fillText(resLabel(pid),52,y+16);y+=24;
+          });y+=8;
         });
       }
-    });
-  }
-  lines.push('');
-  lines.push('━━━━━━━━━━━━━━━━━━━━━━');
-  const pairCount = vData.feeders.reduce((s,f)=>s+f.pairs.length,0);
-  lines.push(`👥 Total: ${pairCount} enumerator unit(s)`);
-  return lines.join('\n');
-}
-
-function buildCombinedText() {
-  const dateStr = getDateString();
-  let lines = [];
-  lines.push(`📅 *GIS ENUMERATION & ASSET MAPPING — DAILY SCHEDULE*`);
-  lines.push(`🗓 ${dateStr}`);
-  lines.push('');
-  lines.push('═══════════════════════════════');
-  lines.push('');
-  Object.keys(VEHICLES).forEach(vKey => {
-    lines.push(buildVehicleText(vKey, false));
-    lines.push('');
+    }
+    y+=10;
   });
-  const assignedCount = getAssignedPairIds().size;
-  const unassigned = allPairs.filter(p => !p.disbanded && !getAssignedPairIds().has('p_' + p.id));
-  lines.push('═══════════════════════════════');
-  lines.push(`📊 *TOTAL DEPLOYED: ${assignedCount} units*`);
-  if (unassigned.length) {
-    lines.push(`⚠️ *UNASSIGNED: ${unassigned.length} pairs*`);
-    unassigned.forEach(p => lines.push(`  • ${p.name1} & ${p.name2}`));
-  }
-  return lines.join('\n');
+  return cv;
 }
+function h2r(hex,a){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`rgba(${r},${g},${b},${a})`;}
+function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
+function dlImage(){const cv=genImage();const a=document.createElement('a');a.download=`schedule_${document.getElementById('datein').value||'today'}.png`;a.href=cv.toDataURL('image/png');a.click();toast('✓ Image downloaded');}
 
-// ══════════════════════════════════════════════════════
-// WHATSAPP IMAGE GENERATION (Canvas)
-// ══════════════════════════════════════════════════════
-function generateScheduleImage() {
-  const canvas  = document.createElement('canvas');
-  const DPR     = 2;
-  const W       = 800;
-  const dateStr = getDateString(false);
-
-  // Collect all data
-  const blocks = [];
-  Object.entries(VEHICLES).forEach(([vKey, v]) => {
-    const vData = schedule[vKey];
-    const feeders = vData.feeders.filter(f => f.pairs.length > 0);
-    if (!feeders.length) return;
-    blocks.push({ type:'vehicle', v, feeders });
-  });
-
-  // Measure height
-  const CTX = canvas.getContext('2d');
-  CTX.scale(DPR, DPR);
-  let estimatedH = 80 + 20; // header + padding
-  blocks.forEach(b => {
-    estimatedH += 44; // vehicle header
-    b.feeders.forEach(f => {
-      estimatedH += 28 + f.pairs.length * 22 + 10;
-    });
-    estimatedH += 12;
-  });
-  estimatedH += 40;
-
-  canvas.width  = W * DPR;
-  canvas.height = estimatedH * DPR;
-  canvas.style.width  = W + 'px';
-  canvas.style.height = estimatedH + 'px';
-  const ctx = canvas.getContext('2d');
-  ctx.scale(DPR, DPR);
-
-  // Background
-  ctx.fillStyle = '#0a0f1e';
-  ctx.fillRect(0, 0, W, estimatedH);
-
-  // Grid lines
-  ctx.strokeStyle = 'rgba(245,158,11,0.04)';
-  ctx.lineWidth = 1;
-  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,estimatedH); ctx.stroke(); }
-  for (let y = 0; y < estimatedH; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-
-  let y = 0;
-
-  // Header bar
-  const hGrad = ctx.createLinearGradient(0, 0, W, 0);
-  hGrad.addColorStop(0, '#0d1526');
-  hGrad.addColorStop(1, '#0a1628');
-  ctx.fillStyle = hGrad;
-  ctx.fillRect(0, y, W, 70);
-
-  ctx.fillStyle = '#f59e0b';
-  ctx.font = 'bold 22px "Syne", sans-serif';
-  ctx.fillText('⚡ GIS ENUMERATION SCHEDULE', 24, y + 30);
-
-  ctx.fillStyle = '#06b6d4';
-  ctx.font = '12px "IBM Plex Mono", monospace';
-  ctx.fillText('🗓 ' + getDateString(), 24, y + 52);
-
-  ctx.fillStyle = '#1e3a5f';
-  ctx.fillRect(0, 70, W, 1);
-  y = 80;
-
-  const vehicleColors = {
-    bus:     { header:'rgba(245,158,11,0.12)', accent:'#f59e0b' },
-    sharon1: { header:'rgba(6,182,212,0.12)',  accent:'#06b6d4' },
-    sharon2: { header:'rgba(16,185,129,0.12)', accent:'#10b981' }
-  };
-
-  blocks.forEach(b => {
-    const vKey = Object.keys(VEHICLES).find(k => VEHICLES[k] === b.v);
-    const vc   = vehicleColors[vKey];
-
-    // Vehicle header
-    const vhGrad = ctx.createLinearGradient(0, y, W, y);
-    vhGrad.addColorStop(0, vc.header);
-    vhGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = vhGrad;
-    ctx.fillRect(12, y, W-24, 40);
-    ctx.strokeStyle = '#1e3a5f';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(12, y, W-24, 40);
-
-    ctx.fillStyle = '#f1f5f9';
-    ctx.font = 'bold 14px "Syne", sans-serif';
-    ctx.fillText(`${b.v.icon} ${b.v.label.toUpperCase()} — DRIVER: ${b.v.driver}`, 24, y + 25);
-
-    const totalCount = b.feeders.reduce((s,f)=>s+f.pairs.length,0);
-    ctx.fillStyle = vc.accent;
-    ctx.font = 'bold 12px "IBM Plex Mono", monospace';
-    const countTxt = `${totalCount} units`;
-    ctx.fillText(countTxt, W - 24 - ctx.measureText(countTxt).width, y + 25);
-    y += 44;
-
-    b.feeders.forEach(f => {
-      const feederName = f.name || 'Unnamed Feeder';
-      const ongoingTxt = f.ongoing ? ' 🔄 ONGOING' : '';
-
-      // Feeder header
-      ctx.fillStyle = '#1a2235';
-      ctx.fillRect(20, y, W-40, 26);
-      ctx.strokeStyle = '#1e3a5f';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(20, y, W-40, 26);
-
-      ctx.fillStyle = vc.accent;
-      ctx.font = 'bold 11px "IBM Plex Mono", monospace';
-      ctx.fillText('⚡ ' + feederName.toUpperCase() + ongoingTxt, 30, y + 17);
-      y += 26;
-
-      f.pairs.forEach((pid, pi) => {
-        ctx.fillStyle = pi % 2 === 0 ? '#111827' : '#0f1a2e';
-        ctx.fillRect(20, y, W-40, 22);
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '10px "IBM Plex Mono", monospace';
-        ctx.fillText(String(pi+1).padStart(2,'0') + '.', 32, y + 15);
-
-        ctx.fillStyle = '#f1f5f9';
-        ctx.font = '11px "IBM Plex Mono", monospace';
-        ctx.fillText(resolveItemLabel(pid), 54, y + 15);
-        y += 22;
-      });
-      y += 8;
-    });
-    y += 12;
-  });
-
-  // Footer
-  ctx.fillStyle = '#1e3a5f';
-  ctx.fillRect(0, y, W, 1);
-  y += 8;
-  ctx.fillStyle = '#64748b';
-  ctx.font = '10px "IBM Plex Mono", monospace';
-  ctx.fillText(`Generated: ${new Date().toLocaleString()} · ⚡ Feeder Allocator`, 24, y + 14);
-
-  return canvas;
-}
-
-function downloadImage() {
-  const canvas = generateScheduleImage();
-  const link = document.createElement('a');
-  link.download = `schedule_${document.getElementById('scheduleDateInput').value || 'today'}.png`;
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-  showToast('✓ Image downloaded');
-}
-
-// ══════════════════════════════════════════════════════
-// PREVIEW MODAL
-// ══════════════════════════════════════════════════════
-function previewWhatsApp() {
-  const modal = document.getElementById('waModal');
-  const body  = document.getElementById('waModalBody');
-  const combinedText = buildCombinedText();
-  window._waTexts = { combined: combinedText };
-  Object.keys(VEHICLES).forEach(vKey => { window._waTexts[vKey] = buildVehicleText(vKey, true); });
-
-  const canvas = generateScheduleImage();
-  const imgSrc = canvas.toDataURL('image/png');
-
-  body.innerHTML = `
-    <div class="output-tabs">
-      <button class="output-tab active" id="tab-text" onclick="switchWATab('text')">📝 TEXT</button>
-      <button class="output-tab" id="tab-image" onclick="switchWATab('image')">🖼 IMAGE</button>
+// ── PREVIEW MODAL ─────────────────────────────────
+function previewWA(){
+  const combined=buildAll();window._wt={combined};
+  vehicles.forEach(v=>{window._wt[v.id]=buildVText(v,schedule[v.id]||{feeders:[]});});
+  const cv=genImage();const img=cv.toDataURL('image/png');
+  document.getElementById('wabody').innerHTML=`
+    <div class="otabs">
+      <button class="otab active" id="ot1" onclick="swOT('text')">📝 TEXT</button>
+      <button class="otab" id="ot2" onclick="swOT('image')">🖼 IMAGE</button>
     </div>
-    <div id="wa-text-panel">
-      <div class="output-section">
-        <div class="output-section-header">
-          <span class="output-section-title">📋 Full Schedule</span>
-          <button class="btn btn-secondary" style="font-size:9px;padding:3px 9px;" onclick="copyText('combined')">📋 COPY</button>
-        </div>
-        <div class="output-text" id="out-combined">${escHtml(combinedText)}</div>
-      </div>
-      ${Object.entries(VEHICLES).map(([vKey, v]) => `
-      <div class="output-section">
-        <div class="output-section-header">
-          <span class="output-section-title">${v.icon} ${v.label} — ${v.driver}</span>
-          <button class="btn btn-secondary" style="font-size:9px;padding:3px 9px;" onclick="copyText('${vKey}')">📋 COPY</button>
-        </div>
-        <div class="output-text" id="out-${vKey}">${escHtml(window._waTexts[vKey])}</div>
-      </div>`).join('')}
+    <div id="wp1">
+      <div class="osec"><div class="oshd"><span class="osttl">📋 Full Schedule</span><button class="btn bh sm" onclick="cpWA('combined')">📋 COPY</button></div><div class="otext">${x(combined)}</div></div>
+      ${vehicles.map(v=>`<div class="osec"><div class="oshd"><span class="osttl">${v.icon} ${v.name} — ${v.driver}</span><button class="btn bh sm" onclick="cpWA('${v.id}')">📋 COPY</button></div><div class="otext">${x(window._wt[v.id])}</div></div>`).join('')}
     </div>
-    <div id="wa-image-panel" class="hidden">
-      <div style="text-align:center;margin-bottom:12px;">
-        <p style="font-size:11px;color:var(--text3);margin-bottom:10px;">Right-click image to save, or use the Download button below.</p>
-        <img src="${imgSrc}" style="max-width:100%;border:1px solid var(--border);border-radius:8px;">
-      </div>
+    <div id="wp2" class="hidden" style="text-align:center;">
+      <p style="font-size:11px;color:var(--tx3);margin-bottom:10px;">Right-click image to save, or use Download button below.</p>
+      <img src="${img}" style="max-width:100%;border:1px solid var(--bd);border-radius:8px;">
     </div>`;
-
-  modal.classList.remove('hidden');
+  document.getElementById('waMod').classList.remove('hidden');
 }
-
-function switchWATab(tab) {
-  document.getElementById('tab-text').className  = 'output-tab' + (tab==='text'?' active':'');
-  document.getElementById('tab-image').className = 'output-tab' + (tab==='image'?' active':'');
-  document.getElementById('wa-text-panel').classList.toggle('hidden', tab !== 'text');
-  document.getElementById('wa-image-panel').classList.toggle('hidden', tab !== 'image');
+function swOT(t){
+  document.getElementById('ot1').className='otab'+(t==='text'?' active':'');
+  document.getElementById('ot2').className='otab'+(t==='image'?' active':'');
+  document.getElementById('wp1').classList.toggle('hidden',t!=='text');
+  document.getElementById('wp2').classList.toggle('hidden',t!=='image');
 }
+function cpWA(k){navigator.clipboard.writeText(window._wt?.[k]||'').then(()=>toast('✓ Copied!'));}
+function copyAll(){navigator.clipboard.writeText(window._wt?.combined||'').then(()=>toast('✓ Copied all!'));}
 
-function copyText(key) {
-  const text = window._waTexts?.[key] || '';
-  navigator.clipboard.writeText(text).then(() => showToast('✓ Copied!'));
-}
-
-function copyAll() {
-  navigator.clipboard.writeText(window._waTexts?.combined || '').then(() => showToast('✓ Full schedule copied!'));
-}
-
-// ══════════════════════════════════════════════════════
-// UTILS
-// ══════════════════════════════════════════════════════
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-
-function escHtml(str) {
-  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function showToast(msg, isError=false) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = `toast show${isError?' error':''}`;
-  clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => { t.classList.remove('show'); }, 2800);
-}
-
-function showLoading(show) {
-  document.getElementById('loadingOverlay').classList.toggle('hidden', !show);
+// ── UTILS ─────────────────────────────────────────
+function CM(id){document.getElementById(id).classList.add('hidden');}
+function x(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function showLoad(v){document.getElementById('lov').classList.toggle('hidden',!v);}
+function toast(msg,type='ok'){
+  const t=document.getElementById('toast');t.textContent=msg;
+  t.className=`toast show${type==='err'?' err':type==='warn'?' warn':''}`;
+  clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove('show'),2800);
 }
 </script>
 </body>

@@ -1123,6 +1123,11 @@ header {
           <div class="stat"><span class="snum" style="color:var(--amber)" id="sd">0</span> Disbanded</div>
           <div class="stat"><span class="snum" style="color:var(--green)" id="sa">0</span> Assigned</div>
           <div class="stat"><span class="snum" style="color:var(--blue)" id="su">0</span> Unassigned</div>
+          <div class="stat" style="margin-left:auto;background:linear-gradient(135deg,#eff6ff,#dbeafe);border:2px solid #bfdbfe;border-radius:10px;padding:4px 12px;">
+            <span style="font-size:11px;font-weight:800;color:var(--navy);">👷 TOTAL STAFF DEPLOYED:</span>
+            <span class="snum" style="color:var(--blue);font-size:22px;" id="sstf">0</span>
+            <span style="font-size:11px;font-weight:800;color:var(--text3);">enumerators</span>
+          </div>
         </div>
         <div class="tbar">
           <span class="tlbl">Add Feeder to:</span>
@@ -1541,7 +1546,7 @@ function renderBoard(){
         <div class="vhacts">
           <div class="vcap">
             <span class="cn ${ov?'ov':'ok'}">${cnt}</span>
-            <span>units</span>
+            <span>units &nbsp;<span style="font-size:11px;font-weight:800;color:${ov?'var(--red)':'var(--green)'};">(${countStaff(vd.feeders.flatMap(f=>f.pairs))} staff)</span></span>
           </div>
           ${ed&&!unav?`<button class="btn btn-outline btn-sm" onclick="addFeeder('${v.id}')">+ Feeder</button>`:''}
           ${ed?`<button class="btn btn-outline btn-sm" onclick="openStat('${v.id}')">🔄</button>`:''}
@@ -1564,7 +1569,7 @@ function renderFL(vid,f,ed){
       <input class="fin" type="text" placeholder="⚡ Feeder name (e.g. Gwagwalada 33kV)" value="${x(f.name)}" ${!ed?'disabled':''} oninput="updFN('${f.id}',this.value)">
       <div class="facts">
         ${ed?`<span class="ontog ${ong?'on':'off'}" onclick="togOng('${vid}','${f.id}')">${ong?'🔄 Ongoing':'Mark Ongoing'}</span>`:''}
-        <span class="fcnt">${items.length} pair${items.length!==1?'s':''}</span>
+        <span class="fcnt">${items.length} unit${items.length!==1?'s':''} · ${countStaff(f.pairs)} staff</span>
         ${ed?`<button class="fdel" onclick="rmFeeder('${vid}','${f.id}')">✕</button>`:''}
       </div>
     </div>
@@ -1640,8 +1645,10 @@ function updateStats(){
   const tot=allPairs.length;const dis=allPairs.filter(p=>p.disbanded).length;
   const asgn=getAssigned().size;const act=allPairs.filter(p=>!p.disbanded).length;
   const soloPend=allInds().filter(ind=>!getAssigned().has(ind.id)).length;
+  const totalStaff=totalDeployedStaff();
   document.getElementById('sp').textContent=tot;document.getElementById('sd').textContent=dis;
   document.getElementById('sa').textContent=asgn;document.getElementById('su').textContent=Math.max(0,act-asgn+soloPend);
+  const staffEl=document.getElementById('sstf');if(staffEl)staffEl.textContent=totalStaff;
 }
 
 // ── HISTORY ───────────────────────────────────────
@@ -1695,6 +1702,24 @@ function resLabel(pid){
   if(s.startsWith('i_')){const ind=allInds().find(x=>x.id===s);return ind?`👤 ${ind.name} (solo)`:s;}
   const p=allPairs.find(p=>p.id===parseInt(s.replace('p_','')));return p?`${p.name1} & ${p.name2}`:s;
 }
+
+// Count actual staff heads from a list of pair-IDs.
+// Solo individuals (i_…) = 1 person. Pairs (p_…) = 2 persons.
+function countStaff(pairIds){
+  return pairIds.reduce((sum,pid)=>{
+    const s=String(pid);
+    return sum+(s.startsWith('i_')?1:2);
+  },0);
+}
+// Count staff for a whole vehicle's feeders
+function vehicleStaff(vId){
+  const vd=schedule[vId]||{feeders:[]};
+  return countStaff(vd.feeders.flatMap(f=>f.pairs));
+}
+// Count all deployed staff across every vehicle
+function totalDeployedStaff(){
+  return vehicles.reduce((sum,v)=>sum+vehicleStaff(v.id),0);
+}
 function buildVText(v,vd){
   let l=[];
   l.push(`${v.icon} *${v.name.toUpperCase()} — DRIVER: ${v.driver}*`);
@@ -1702,17 +1727,31 @@ function buildVText(v,vd){
   else{
     l.push('━━━━━━━━━━━━━━━━━━━━━━');
     if(!vd.feeders.length){l.push('_(No feeders assigned)_');}
-    else{vd.feeders.forEach((f,fi)=>{l.push('');l.push(`⚡ *${(f.name||`Feeder ${fi+1}`).toUpperCase()}*${f.ongoing?' 🔄 _(ONGOING)_':''}`);if(!f.pairs.length)l.push('  _(No pairs)_');else f.pairs.forEach((p,pi)=>l.push(`  ${pi+1}. ${resLabel(p)}`));});}
-    l.push('');l.push(`👥 Total: ${vd.feeders.reduce((s,f)=>s+f.pairs.length,0)} unit(s)`);
+    else{vd.feeders.forEach((f,fi)=>{
+      const fStaff=countStaff(f.pairs);
+      l.push('');
+      l.push(`⚡ *${(f.name||`Feeder ${fi+1}`).toUpperCase()}*${f.ongoing?' 🔄 _(ONGOING)_':''}`);
+      if(!f.pairs.length)l.push('  _(No pairs)_');
+      else{
+        f.pairs.forEach((p,pi)=>l.push(`  ${pi+1}. ${resLabel(p)}`));
+        l.push(`  👷 ${f.pairs.length} unit${f.pairs.length!==1?'s':''} (${fStaff} enumerator${fStaff!==1?'s':''})`);
+      }
+    });}
+    const vUnits=vd.feeders.reduce((s,f)=>s+f.pairs.length,0);
+    const vStaff=countStaff(vd.feeders.flatMap(f=>f.pairs));
+    l.push('');l.push(`👥 *Total: ${vUnits} unit${vUnits!==1?'s':''} (${vStaff} Enumerator${vStaff!==1?'s':''})*`);
   }
   return l.join('\n');
 }
 function buildAll(){
   let l=[];l.push(`📅 *GIS ENUMERATION & ASSET MAPPING — DAILY SCHEDULE*`);l.push(`🗓 ${getDS()}`);l.push('');l.push('═══════════════════════════════');l.push('');
   vehicles.forEach(v=>{l.push(buildVText(v,schedule[v.id]||{feeders:[]}));l.push('');});
-  const asgn=getAssigned().size;const un=allPairs.filter(p=>!p.disbanded&&!getAssigned().has('p_'+p.id));
-  l.push('═══════════════════════════════');l.push(`📊 *TOTAL DEPLOYED: ${asgn} units*`);
-  if(un.length){l.push(`⚠️ *UNASSIGNED: ${un.length} pairs*`);un.forEach(p=>l.push(`  • ${p.name1} & ${p.name2}`));}
+  const asgn=getAssigned().size;
+  const totalStaff=totalDeployedStaff();
+  const un=allPairs.filter(p=>!p.disbanded&&!getAssigned().has('p_'+p.id));
+  l.push('═══════════════════════════════');
+  l.push(`📊 *TOTAL DEPLOYED: ${asgn} unit${asgn!==1?'s':''} (${totalStaff} Enumerator${totalStaff!==1?'s':''})*`);
+  if(un.length){l.push(`⚠️ *UNASSIGNED: ${un.length} pair${un.length!==1?'s':''}*`);un.forEach(p=>l.push(`  • ${p.name1} & ${p.name2}`));}
   return l.join('\n');
 }
 
@@ -1824,9 +1863,10 @@ function genImage(){
     ctx.font='600 12px Arial';
     ctx.fillText(`🚗 Driver: ${v.driver}   💺 ${v.capacity} seats`,74,y+41);
 
-    // Pair count badge (top right)
+    // Pair count badge (top right) — units + staff
     const cnt=vd.feeders.reduce((s,f)=>s+f.pairs.length,0);
-    const cntTxt=`${cnt} unit${cnt!==1?'s':''}`;
+    const vStaffCnt=countStaff(vd.feeders.flatMap(f=>f.pairs));
+    const cntTxt=`${cnt} unit${cnt!==1?'s':''} (${vStaffCnt} staff)`;
     ctx.fillStyle=clr;ctx.font='bold 13px "Barlow Condensed",Arial';
     ctx.textAlign='right';
     ctx.fillText(cntTxt,W-28,y+30);
@@ -1885,9 +1925,16 @@ function genImage(){
           const fn=(f.name||`Feeder ${fi+1}`).toUpperCase();
           // Truncate if too long
           let fnTxt='⚡ '+fn;
-          while(ctx.measureText(fnTxt).width>fw-20&&fnTxt.length>10)fnTxt=fnTxt.slice(0,-2)+'…';
+          while(ctx.measureText(fnTxt).width>fw-90&&fnTxt.length>10)fnTxt=fnTxt.slice(0,-2)+'…';
           ctx.fillText(fnTxt,fx+10,fy+20);
-          if(f.ongoing){ctx.fillStyle='rgba(255,255,255,0.75)';ctx.font='10px Arial';ctx.fillText('🔄 ONGOING',fx+fw-90,fy+20);}
+          // Staff count badge on feeder header (right side)
+          const fStf=countStaff(f.pairs);
+          const fStfTxt=`${f.pairs.length}u · ${fStf} staff`;
+          ctx.font='bold 10px Arial';ctx.textAlign='right';
+          ctx.fillStyle='rgba(255,255,255,0.85)';
+          ctx.fillText(fStfTxt,fx+fw-8,fy+20);
+          ctx.textAlign='left';
+          if(f.ongoing){ctx.fillStyle='rgba(255,255,255,0.7)';ctx.font='9px Arial';ctx.fillText('🔄 ONGOING',fx+10,fy+20);}
 
           // Pairs
           f.pairs.forEach((pid,pi)=>{
@@ -1919,7 +1966,8 @@ function genImage(){
   ctx.font='bold 13px Arial';
   ctx.textAlign='left';
   const asgn=getAssigned().size;
-  ctx.fillText(`📊  Total Deployed: ${asgn} unit${asgn!==1?'s':''}   ·   ${allPairs.length} Pairs Total`,18,H-17);
+  const totStaff=totalDeployedStaff();
+  ctx.fillText(`📊  Total Deployed: ${asgn} unit${asgn!==1?'s':''}  (${totStaff} Enumerator${totStaff!==1?'s':''})   ·   ${allPairs.length} Pairs Total`,18,H-17);
   ctx.textAlign='right';
   ctx.fillStyle='rgba(255,255,255,0.5)';
   ctx.font='11px Arial';

@@ -1355,9 +1355,18 @@ function showApp(user){
 }
 
 async function autoLoadOnStart(){
+  // Wait for Firebase to be ready (up to 4 seconds)
+  if(!fbReady){
+    await new Promise(resolve=>{
+      const t=setTimeout(resolve,4000); // timeout fallback
+      window.addEventListener('firebase-ready',()=>{clearTimeout(t);resolve();},{once:true});
+    });
+  }
+  // Safety timeout — always hide loader after 6s no matter what
+  const safetyTimer=setTimeout(()=>showLoad(false),6000);
   showLoad(true);
   try{
-    // 1. Load persistent pairs from Firebase
+    // 1. Load persistent pairs from Firebase (only if authenticated or viewer)
     const hasPairs = await loadPairsFromCloud();
     if(hasPairs && allPairs.length){
       document.getElementById('uz').classList.add('hf');
@@ -1367,14 +1376,12 @@ async function autoLoadOnStart(){
     // 2. Load latest saved schedule
     const hist = await loadAllHist();
     if(hist.length){
-      const latest = hist[0]; // already sorted desc
+      const latest = hist[0];
       const d = await loadByDate(latest.date);
       if(d){
-        // Restore schedule and vehicles but keep fresh pairs from cloud
         schedule = d.schedule || {};
         feederCtr = d.feederCtr || 0;
         if(d.vehicles) vehicles = d.vehicles;
-        // Only overwrite pairs if we didn't get them from cloud
         if(!hasPairs || !allPairs.length){
           allPairs = d.allPairs || [];
           disbandedPairs = d.disbandedPairs || [];
@@ -1388,15 +1395,19 @@ async function autoLoadOnStart(){
         initBoard();
         renderPairs();
         renderAFBtns();
-        toast(`✓ Loaded latest schedule: ${latest.date}`,'ok');
+        toast(`✓ Loaded latest: ${latest.date}`,'ok');
       }
     } else if(hasPairs && allPairs.length){
-      // Have pairs but no schedule yet — just start board
       initBoard();
       renderPairs();
     }
-  }catch(e){console.warn('Auto-load error:',e);}
-  finally{showLoad(false);}
+  }catch(e){
+    console.warn('Auto-load error:',e);
+    // Don't block the UI on error
+  }finally{
+    clearTimeout(safetyTimer);
+    showLoad(false);
+  }
 }
 }
 
@@ -1437,7 +1448,7 @@ async function savePairsToCloud(pairs){
 }
 
 async function loadPairsFromCloud(){
-  if(!fbReady)return false;
+  if(!fbReady||!window.__currentUser)return false;
   try{
     const{doc,getDoc}=window.__fbOps;
     const snap=await getDoc(doc(window.__db,'config','staffPairs'));
@@ -1446,9 +1457,6 @@ async function loadPairsFromCloud(){
       allPairs=d.pairs||[];
       disbandedPairs=d.disbandedPairs||[];
       filteredPairs=[...allPairs];
-      let pid=allPairs.length?Math.max(...allPairs.map(p=>p.id))+1:1;
-      // fix IDs if needed
-      allPairs.forEach(p=>{if(!p.id)p.id=pid++;});
       return true;
     }
   }catch(e){console.warn('Could not load pairs:',e);}

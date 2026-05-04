@@ -1284,7 +1284,13 @@ let allPairs=[],disbandedPairs=[],filteredPairs=[];
 let activeTab='pairs',feederCtr=0,boardStarted=false;
 let dragId=null,dragGhost=null;
 let pendingDis=null,pendingStat=null,editVid=null;
-let fbReady=false,isViewer=false;
+// firebase-ready fires from the module script before this script runs, so always true by here
+let fbReady=true,isViewer=false;
+// Reflect the already-fired state in the UI immediately
+document.addEventListener('DOMContentLoaded',()=>{
+  const el=document.getElementById('fbstat');
+  if(el){el.textContent='● FIREBASE';el.className='fbstat on';}
+});
 
 // Vehicle color configs (index-based)
 const VCFG = [
@@ -1318,7 +1324,6 @@ function canEditSilent(){
   return u&&(u.role==='admin'||u.role==='editor');
 }
 window.addEventListener('auth-changed',e=>{const user=e.detail;if(user){isViewer=false;showApp(user);}else if(!isViewer)showLogin();});
-window.addEventListener('firebase-ready',()=>{fbReady=true;document.getElementById('fbstat').textContent='● FIREBASE';document.getElementById('fbstat').className='fbstat on';});
 async function doLogin(){
   const em=document.getElementById('lemail').value.trim();
   const pw=document.getElementById('lpass').value;
@@ -1355,13 +1360,6 @@ function showApp(user){
 }
 
 async function autoLoadOnStart(){
-  // Wait for Firebase to be ready (up to 4 seconds)
-  if(!fbReady){
-    await new Promise(resolve=>{
-      const t=setTimeout(resolve,4000); // timeout fallback
-      window.addEventListener('firebase-ready',()=>{clearTimeout(t);resolve();},{once:true});
-    });
-  }
   // Safety timeout — always hide loader after 6s no matter what
   const safetyTimer=setTimeout(()=>showLoad(false),6000);
   showLoad(true);
@@ -1403,7 +1401,6 @@ async function autoLoadOnStart(){
     }
   }catch(e){
     console.warn('Auto-load error:',e);
-    // Don't block the UI on error
   }finally{
     clearTimeout(safetyTimer);
     showLoad(false);

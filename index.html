@@ -1003,6 +1003,43 @@ header {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ══════════════════════════════════════════
+   VEHICLE TABS (scheduling view)
+══════════════════════════════════════════ */
+.vtabs {
+  display: flex; gap: 0;
+  background: var(--surface2);
+  border-bottom: 2px solid var(--border);
+  overflow-x: auto; flex-shrink: 0;
+}
+.vtabs::-webkit-scrollbar { height: 3px; }
+.vtabs::-webkit-scrollbar-thumb { background: var(--border2); }
+.vtab {
+  padding: 10px 18px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 800;
+  color: var(--text3);
+  border: none; background: transparent;
+  cursor: pointer; white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: all .15s;
+  display: flex; align-items: center; gap: 6px;
+  letter-spacing: 0.3px;
+}
+.vtab:hover { color: var(--navy); background: rgba(15,37,87,0.04); }
+.vtab.active { color: var(--navy); border-bottom-color: var(--blue); background: #fff; }
+.vtab .vbadge {
+  font-size: 10px; font-weight: 800;
+  padding: 1px 6px; border-radius: 10px;
+  background: var(--bg); border: 1.5px solid var(--border2);
+  color: var(--text3);
+}
+.vtab.active .vbadge { background: var(--blue); color: #fff; border-color: var(--blue); }
+.vtab.unav-tab { opacity: .5; }
+.vtab-panel { display: none; }
+.vtab-panel.active { display: flex; flex-direction: column; }
+
+/* ══════════════════════════════════════════
    COLLAPSIBLE FEEDER LANES
 ══════════════════════════════════════════ */
 .fdrop-wrap {
@@ -1153,7 +1190,10 @@ header {
           <button class="btn btn-outline btn-sm" id="bauto" onclick="autoAssign()" disabled>🎲 Auto-Assign</button>
           <button class="btn btn-outline btn-sm" id="breset" onclick="resetAll()" disabled>↩ Reset All</button>
         </div>
-        <div class="bscroll" id="bscroll"></div>
+        <!-- Vehicle tab bar — rendered by renderBoard -->
+        <div class="vtabs" id="vtabBar"></div>
+        <!-- Tab panels — rendered by renderBoard -->
+        <div id="bscroll" class="bscroll" style="padding:0;gap:0;"></div>
       </div>
     </div>
   </div>
@@ -1593,13 +1633,89 @@ function openStat(vid){if(!canEdit())return;pendingStat=vid;const v=vehicles.fin
 function confirmStatus(){const v=vehicles.find(x=>x.id===pendingStat);if(!v)return;v.status=document.getElementById('smstat').value;v.reason=document.getElementById('smreason').value.trim();CM('stMod');renderBoard();renderVM();const lbl={active:'Active ✅',fault:'FAULT 🔴',maintenance:'MAINTENANCE 🟠'};toast(`${v.name} → ${lbl[v.status]}`,'ok');}
 function toggleRR(rowId,selId){const v=document.getElementById(selId).value;document.getElementById(rowId).classList.toggle('hidden',v==='active');}
 
-// ── BOARD ─────────────────────────────────────────
+// Track active vehicle tab
+let activeVTab = null;
+
+function renderBoard(){
+  if(!boardStarted)return;
+  const ed=canEditSilent();
+
+  // Remember active tab; default to first vehicle
+  if(!activeVTab||!vehicles.find(v=>v.id===activeVTab)) activeVTab=vehicles[0]?.id||'all';
+
+  // ── Build tab bar ──
+  const tabBar=document.getElementById('vtabBar');
+  tabBar.innerHTML=[
+    // One tab per vehicle
+    ...vehicles.map((v,i)=>{
+      const vd=schedule[v.id]||{feeders:[]};
+      const cnt=vd.feeders.reduce((s,f)=>s+f.pairs.length,0);
+      const unav=v.status!=='active';
+      const cfg=VCFG[i%VCFG.length];
+      const clr=['#d97706','#0d9488','#1d4ed8','#7c3aed'][i%4];
+      return `<button class="vtab${activeVTab===v.id?' active':''}${unav?' unav-tab':''}"
+        style="${activeVTab===v.id?`border-bottom-color:${clr};`:''}"
+        onclick="switchVTab('${v.id}')">
+        ${v.icon} ${x(v.name)}
+        <span class="vbadge">${cnt}</span>
+        ${unav?'⚠':''}
+      </button>`;
+    }),
+    // All-vehicles overview tab
+    `<button class="vtab${activeVTab==='all'?' active':''}" onclick="switchVTab('all')" style="${activeVTab==='all'?'border-bottom-color:var(--navy);':''}">
+      📋 All Vehicles
+    </button>`
+  ].join('');
+
+  // ── Build panels ──
+  const bscroll=document.getElementById('bscroll');
+
+  if(activeVTab==='all'){
+    // Overview: all vehicles stacked (original layout), scrollable
+    bscroll.style.padding='16px';
+    bscroll.style.gap='14px';
+    bscroll.innerHTML=vehicles.map((v,i)=>{
+      const vd=schedule[v.id]||{feeders:[]};
+      const cnt=vd.feeders.reduce((s,f)=>s+f.pairs.length,0);
+      const ov=cnt>v.capacity;const unav=v.status!=='active';
+      const cfg=VCFG[i%VCFG.length];
+      return renderVehicleSection(v,vd,cnt,ov,unav,cfg,ed);
+    }).join('');
+  } else {
+    // Single vehicle tab — full height, single panel
+    bscroll.style.padding='0';
+    bscroll.style.gap='0';
+    const v=vehicles.find(v=>v.id===activeVTab);
+    if(!v){bscroll.innerHTML='';return;}
+    const i=vehicles.indexOf(v);
+    const vd=schedule[v.id]||{feeders:[]};
+    const cnt=vd.feeders.reduce((s,f)=>s+f.pairs.length,0);
+    const ov=cnt>v.capacity;const unav=v.status!=='active';
+    const cfg=VCFG[i%VCFG.length];
+    bscroll.innerHTML=`<div style="padding:14px;display:flex;flex-direction:column;gap:10px;height:100%;overflow-y:auto;">
+      ${renderVehicleSection(v,vd,cnt,ov,unav,cfg,ed)}
+    </div>`;
+  }
+  updateStats();
+}
+
+function switchVTab(vid){
+  activeVTab=vid;
+  renderBoard();
+}
+
+// ── BOARD INIT & HELPERS ──────────────────────────
 function renderAFBtns(){
   const c=document.getElementById('afbtns');if(!c)return;const ed=canEditSilent();
-  const clsBtns = ['btn-amber','btn-teal','btn-blue','btn-outline','btn-outline','btn-outline'];
+  const clsBtns=['btn-amber','btn-teal','btn-blue','btn-outline','btn-outline','btn-outline'];
   c.innerHTML=vehicles.filter(v=>v.status==='active').map((v,i)=>
-    `<button class="btn ${clsBtns[i]||'btn-outline'} btn-sm" ${!ed?'disabled':''} onclick="addFeeder('${v.id}')">+ ${v.icon} ${v.name.split(' ')[0]}</button>`
+    `<button class="btn ${clsBtns[i]||'btn-outline'} btn-sm" ${!ed?'disabled':''} onclick="addFeederAndSwitch('${v.id}')">+ ${v.icon} ${v.name.split(' ')[0]}</button>`
   ).join('');
+}
+function addFeederAndSwitch(vid){
+  // Switch to that vehicle's tab first, then add feeder
+  activeVTab=vid;
+  addFeeder(vid);
 }
 function initBoard(){
   boardStarted=true;initSchedKeys();
@@ -1612,48 +1728,40 @@ function resolveItem(pid){
   if(s.startsWith('i_'))return allInds().find(x=>x.id===s)||null;
   return allPairs.find(p=>p.id===parseInt(s.replace('p_','')))||null;
 }
-function renderBoard(){
-  if(!boardStarted)return;
-  const c=document.getElementById('bscroll');const ed=canEditSilent();
-  c.innerHTML=vehicles.map((v,i)=>{
-    const vd=schedule[v.id]||{feeders:[]};
-    const cnt=vd.feeders.reduce((s,f)=>s+f.pairs.length,0);
-    const ov=cnt>v.capacity;const unav=v.status!=='active';
-    const cfg=VCFG[i%VCFG.length];
-    return`<div class="vsec" id="vs-${v.id}">
-      ${unav?`
-        <div class="vstpill ${v.status==='maintenance'?'maint':''}">${v.status==='fault'?'🔴 VEHICLE FAULT / OUT OF SERVICE':'🟠 VEHICLE UNDER MAINTENANCE'}</div>
-        <div class="vuov">
-          <div class="vubig">${v.status==='fault'?'⚠ OUT OF SERVICE':'⚠ UNDER MAINTENANCE'}</div>
-          <div class="vureason">${x(v.reason||'No details provided')}</div>
-          ${ed?`<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="openStat('${v.id}')">🔄 Update Status</button>`:''}
-        </div>`:''}
-      <div class="vhdr ${cfg.hdr}">
-        <div class="vinfo">
-          <div class="vico ${cfg.ico}">${v.icon}</div>
-          <div>
-            <div class="vname">${x(v.name)}</div>
-            <div class="vmeta">🚗 Driver: <strong>${x(v.driver)}</strong> &nbsp;·&nbsp; 💺 ${v.capacity} seats</div>
-          </div>
-        </div>
-        <div class="vhacts">
-          <div class="vcap">
-            <span class="cn ${ov?'ov':'ok'}">${cnt}</span>
-            <span>units &nbsp;<span style="font-size:11px;font-weight:800;color:${ov?'var(--red)':'var(--green)'};">(${countStaff(vd.feeders.flatMap(f=>f.pairs))} staff)</span></span>
-          </div>
-          ${ed&&!unav?`<button class="btn btn-outline btn-sm" onclick="addFeeder('${v.id}')">+ Feeder</button>`:''}
-          ${ed?`<button class="btn btn-outline btn-sm" onclick="openStat('${v.id}')">🔄</button>`:''}
+
+function renderVehicleSection(v,vd,cnt,ov,unav,cfg,ed){
+  return`<div class="vsec" id="vs-${v.id}">
+    ${unav?`
+      <div class="vstpill ${v.status==='maintenance'?'maint':''}">${v.status==='fault'?'🔴 VEHICLE FAULT / OUT OF SERVICE':'🟠 VEHICLE UNDER MAINTENANCE'}</div>
+      <div class="vuov">
+        <div class="vubig">${v.status==='fault'?'⚠ OUT OF SERVICE':'⚠ UNDER MAINTENANCE'}</div>
+        <div class="vureason">${x(v.reason||'No details provided')}</div>
+        ${ed?`<button class="btn btn-outline btn-sm" style="margin-top:6px;" onclick="openStat('${v.id}')">🔄 Update Status</button>`:''}
+      </div>`:''}
+    <div class="vhdr ${cfg.hdr}">
+      <div class="vinfo">
+        <div class="vico ${cfg.ico}">${v.icon}</div>
+        <div>
+          <div class="vname">${x(v.name)}</div>
+          <div class="vmeta">🚗 Driver: <strong>${x(v.driver)}</strong> &nbsp;·&nbsp; 💺 ${v.capacity} seats</div>
         </div>
       </div>
-      <div class="vbody" id="vb-${v.id}">
-        ${vd.feeders.length===0
-          ?`<div style="padding:10px;text-align:center;font-size:12px;font-weight:700;color:var(--text4);">${unav?'Vehicle unavailable.':'No feeders added yet. Click "+ Feeder" to add one.'}</div>`
-          :vd.feeders.map(f=>renderFL(v.id,f,ed&&!unav)).join('')}
-        ${ed&&!unav?`<button class="afbtn" onclick="addFeeder('${v.id}')">+ Add Another Feeder</button>`:''}
+      <div class="vhacts">
+        <div class="vcap">
+          <span class="cn ${ov?'ov':'ok'}">${cnt}</span>
+          <span>units &nbsp;<span style="font-size:11px;font-weight:800;color:${ov?'var(--red)':'var(--green)'};">(${countStaff(vd.feeders.flatMap(f=>f.pairs))} staff)</span></span>
+        </div>
+        ${ed&&!unav?`<button class="btn btn-outline btn-sm" onclick="addFeeder('${v.id}')">+ Feeder</button>`:''}
+        ${ed?`<button class="btn btn-outline btn-sm" onclick="openStat('${v.id}')">🔄</button>`:''}
       </div>
-    </div>`;
-  }).join('');
-  updateStats();
+    </div>
+    <div class="vbody" id="vb-${v.id}">
+      ${vd.feeders.length===0
+        ?`<div style="padding:10px;text-align:center;font-size:12px;font-weight:700;color:var(--text4);">${unav?'Vehicle unavailable.':'No feeders added yet. Click "+ Feeder" to add one.'}</div>`
+        :vd.feeders.map(f=>renderFL(v.id,f,ed&&!unav)).join('')}
+      ${ed&&!unav?`<button class="afbtn" onclick="addFeeder('${v.id}')">+ Add Another Feeder</button>`:''}
+    </div>
+  </div>`;
 }
 function renderFL(vid,f,ed){
   const items=f.pairs.map(p=>resolveItem(p)).filter(Boolean);
@@ -1687,7 +1795,15 @@ function renderFL(vid,f,ed){
 }
 
 // ── FEEDER MANAGEMENT ─────────────────────────────
-function addFeeder(vid){if(!canEdit())return;if(!boardStarted)initBoard();if(!schedule[vid])schedule[vid]={feeders:[]};feederCtr++;schedule[vid].feeders.push({id:`f${feederCtr}`,name:'',pairs:[],ongoing:false});renderBoard();setTimeout(()=>{const ins=document.querySelectorAll(`#vb-${vid} .fin`);if(ins.length)ins[ins.length-1].focus();},60);}
+function addFeeder(vid){
+  if(!canEdit())return;if(!boardStarted)initBoard();
+  if(!schedule[vid])schedule[vid]={feeders:[]};
+  feederCtr++;
+  schedule[vid].feeders.push({id:`f${feederCtr}`,name:'',pairs:[],ongoing:false,collapsed:false});
+  activeVTab=vid; // Switch to that vehicle's tab
+  renderBoard();
+  setTimeout(()=>{const ins=document.querySelectorAll(`#vb-${vid} .fin`);if(ins.length)ins[ins.length-1].focus();},60);
+}
 function rmFeeder(vid,fid){if(!canEdit())return;const f=schedule[vid]?.feeders.find(x=>x.id===fid);if(f?.pairs.length>0&&!confirm(`Remove feeder? ${f.pairs.length} item(s) unassigned.`))return;schedule[vid].feeders=schedule[vid].feeders.filter(x=>x.id!==fid);renderBoard();renderPairs();}
 function updFN(fid,n){Object.values(schedule).forEach(v=>{const f=v.feeders.find(x=>x.id===fid);if(f)f.name=n;});updateStats();}
 function unassign(iid,fid){Object.values(schedule).forEach(v=>v.feeders.forEach(f=>{if(f.id===fid)f.pairs=f.pairs.filter(p=>String(p)!==String(iid));}));renderBoard();renderPairs();}

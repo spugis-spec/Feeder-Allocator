@@ -715,7 +715,7 @@ header {
   font-family: 'Nunito', sans-serif;
   font-size: 13px; font-weight: 700;
   color: var(--navy);
-  min-width: 160px; width: 100%; flex: 1;
+  min-width: 100px; max-width: 220px; flex: 1;
 }
 .fin::placeholder { color: var(--text4); font-weight: 600; }
 .fin:disabled { color: var(--text4); cursor: not-allowed; }
@@ -1002,24 +1002,7 @@ header {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Collapsible feeder body */
-.fdrop-wrap {
-  overflow: hidden;
-  transition: max-height 0.3s ease;
-  max-height: 2000px;
-}
-.fdrop-wrap.collapsed {
-  max-height: 0;
-}
-.fcollapse {
-  background: none; border: none; cursor: pointer;
-  font-size: 13px; color: var(--text3);
-  padding: 0 4px; line-height: 1;
-  transition: transform .2s;
-}
-.fcollapse.collapsed { transform: rotate(-90deg); }
-
-
+/* Drag ghost */
 .dghost {
   position: fixed; pointer-events: none; z-index: 9997;
   background: var(--navy); color: #fff;
@@ -1284,13 +1267,7 @@ let allPairs=[],disbandedPairs=[],filteredPairs=[];
 let activeTab='pairs',feederCtr=0,boardStarted=false;
 let dragId=null,dragGhost=null;
 let pendingDis=null,pendingStat=null,editVid=null;
-// firebase-ready fires from the module script before this script runs, so always true by here
-let fbReady=true,isViewer=false;
-// Reflect the already-fired state in the UI immediately
-document.addEventListener('DOMContentLoaded',()=>{
-  const el=document.getElementById('fbstat');
-  if(el){el.textContent='● FIREBASE';el.className='fbstat on';}
-});
+let fbReady=false,isViewer=false;
 
 // Vehicle color configs (index-based)
 const VCFG = [
@@ -1324,6 +1301,7 @@ function canEditSilent(){
   return u&&(u.role==='admin'||u.role==='editor');
 }
 window.addEventListener('auth-changed',e=>{const user=e.detail;if(user){isViewer=false;showApp(user);}else if(!isViewer)showLogin();});
+window.addEventListener('firebase-ready',()=>{fbReady=true;document.getElementById('fbstat').textContent='● FIREBASE';document.getElementById('fbstat').className='fbstat on';});
 async function doLogin(){
   const em=document.getElementById('lemail').value.trim();
   const pw=document.getElementById('lpass').value;
@@ -1355,57 +1333,6 @@ function showApp(user){
   document.getElementById('baddv').disabled=!ed;
   document.getElementById('uz').style.cursor=ed?'pointer':'default';
   initSchedKeys();updateDate();renderAFBtns();
-  // Auto-load: first load saved pairs, then latest schedule
-  autoLoadOnStart();
-}
-
-async function autoLoadOnStart(){
-  // Safety timeout — always hide loader after 6s no matter what
-  const safetyTimer=setTimeout(()=>showLoad(false),6000);
-  showLoad(true);
-  try{
-    // 1. Load persistent pairs from Firebase (only if authenticated or viewer)
-    const hasPairs = await loadPairsFromCloud();
-    if(hasPairs && allPairs.length){
-      document.getElementById('uz').classList.add('hf');
-      document.getElementById('ustat').innerHTML=`<strong style="color:var(--sky)">☁️ Pairs from cloud</strong><br>${allPairs.length} pairs loaded`;
-    }
-
-    // 2. Load latest saved schedule
-    const hist = await loadAllHist();
-    if(hist.length){
-      const latest = hist[0];
-      const d = await loadByDate(latest.date);
-      if(d){
-        schedule = d.schedule || {};
-        feederCtr = d.feederCtr || 0;
-        if(d.vehicles) vehicles = d.vehicles;
-        if(!hasPairs || !allPairs.length){
-          allPairs = d.allPairs || [];
-          disbandedPairs = d.disbandedPairs || [];
-          filteredPairs = [...allPairs];
-        }
-        document.getElementById('datein').value = latest.date;
-        updateDate();
-        document.getElementById('ustat').innerHTML=`<strong style="color:var(--sky)">📂 Latest: ${latest.date}</strong><br>${allPairs.length} pairs`;
-        document.getElementById('uz').classList.add('hf');
-        initSchedKeys();
-        initBoard();
-        renderPairs();
-        renderAFBtns();
-        toast(`✓ Loaded latest: ${latest.date}`,'ok');
-      }
-    } else if(hasPairs && allPairs.length){
-      initBoard();
-      renderPairs();
-    }
-  }catch(e){
-    console.warn('Auto-load error:',e);
-  }finally{
-    clearTimeout(safetyTimer);
-    showLoad(false);
-  }
-}
 }
 
 // ── DATE ──────────────────────────────────────────
@@ -1436,29 +1363,7 @@ async function loadByDate(dv){
   if(fbReady){try{showLoad(true);const{doc,getDoc}=window.__fbOps;const s=await getDoc(doc(window.__db,'schedules',dv));if(s.exists())return s.data();}catch(e){}finally{showLoad(false);}}
   const l=localStorage.getItem('s_'+dv);return l?JSON.parse(l):null;
 }
-async function savePairsToCloud(pairs){
-  if(!fbReady||!window.__currentUser)return;
-  try{
-    const{doc,setDoc}=window.__fbOps;
-    await setDoc(doc(window.__db,'config','staffPairs'),{pairs,disbandedPairs,savedAt:new Date().toISOString()});
-  }catch(e){console.warn('Could not save pairs:',e);}
-}
-
-async function loadPairsFromCloud(){
-  if(!fbReady||!window.__currentUser)return false;
-  try{
-    const{doc,getDoc}=window.__fbOps;
-    const snap=await getDoc(doc(window.__db,'config','staffPairs'));
-    if(snap.exists()){
-      const d=snap.data();
-      allPairs=d.pairs||[];
-      disbandedPairs=d.disbandedPairs||[];
-      filteredPairs=[...allPairs];
-      return true;
-    }
-  }catch(e){console.warn('Could not load pairs:',e);}
-  return false;
-}
+async function loadAllHist(){
   let r=[];
   if(fbReady){try{const{getDocs,collection,query,orderBy}=window.__fbOps;const q=query(collection(window.__db,'schedules'),orderBy('date','desc'));const s=await getDocs(q);s.forEach(d=>r.push(d.data()));return r;}catch(e){}}
   for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith('s_')){try{r.push(JSON.parse(localStorage.getItem(k)));}catch(e){}}}
@@ -1485,7 +1390,6 @@ function handleUpload(input){
       document.getElementById('uz').classList.add('hf');
       document.getElementById('ustat').innerHTML=`<strong style="color:var(--green)">✓ ${file.name}</strong><br>${allPairs.length} pairs loaded`;
       renderPairs();toast(`✓ ${allPairs.length} pairs loaded`,'ok');
-      savePairsToCloud(allPairs);
       if(!boardStarted)initBoard();
     }catch(err){toast('File error: '+err.message,'err');}
     showLoad(false);input.value='';
@@ -1551,7 +1455,6 @@ function confirmDisband(){
   disbandedPairs.push({originalId:pair.id,persons:[i1,i2]});
   if(s1)assignToFeeder(i1.id,s1);if(s2)assignToFeeder(i2.id,s2);
   CM('disMod');renderBoard();renderPairs();updateStats();toast(`✓ Disbanded — ${pair.name1} & ${pair.name2}`,'ok');
-  savePairsToCloud(allPairs);
 }
 function assignToFeeder(iid,path){const[vid,fid]=path.split('::');const f=schedule[vid]?.feeders.find(f=>f.id===fid);if(f&&!f.pairs.includes(iid))f.pairs.push(iid);}
 function restorePair(pid){
@@ -1560,7 +1463,6 @@ function restorePair(pid){
   disbandedPairs[idx].persons.forEach(ind=>Object.values(schedule).forEach(v=>v.feeders.forEach(f=>{f.pairs=f.pairs.filter(p=>String(p)!==ind.id);})));
   disbandedPairs.splice(idx,1);pair.disbanded=false;filteredPairs=[...allPairs];
   renderBoard();renderPairs();updateStats();toast(`✓ Restored: ${pair.name1} & ${pair.name2}`,'ok');
-  savePairsToCloud(allPairs);
 }
 
 // ── VEHICLE MANAGER ───────────────────────────────
@@ -1662,10 +1564,8 @@ function renderBoard(){
 }
 function renderFL(vid,f,ed){
   const items=f.pairs.map(p=>resolveItem(p)).filter(Boolean);const ong=f.ongoing||false;
-  const isCollapsed=f.collapsed||false;
-  return`<div class="flane" id="fl-${f.id}">
+  return`<div class="flane" id="fl-${f.id}" ondragover="DO(event,'${f.id}')" ondragleave="DL(event,'${f.id}')" ondrop="DP(event,'${vid}','${f.id}')">
     <div class="fhd">
-      <button class="fcollapse ${isCollapsed?'collapsed':''}" onclick="toggleFeederCollapse('${vid}','${f.id}')" title="${isCollapsed?'Expand':'Collapse'} feeder">▼</button>
       <input class="fin" type="text" placeholder="⚡ Feeder name (e.g. Gwagwalada 33kV)" value="${x(f.name)}" ${!ed?'disabled':''} oninput="updFN('${f.id}',this.value)">
       <div class="facts">
         ${ed?`<span class="ontog ${ong?'on':'off'}" onclick="togOng('${vid}','${f.id}')">${ong?'🔄 Ongoing':'Mark Ongoing'}</span>`:''}
@@ -1673,18 +1573,16 @@ function renderFL(vid,f,ed){
         ${ed?`<button class="fdel" onclick="rmFeeder('${vid}','${f.id}')">✕</button>`:''}
       </div>
     </div>
-    <div class="fdrop-wrap ${isCollapsed?'collapsed':''}" id="fdw-${f.id}">
-      <div class="fdrop ${items.length===0?'emp':''}" id="fd-${f.id}" ondragover="DO(event,'${f.id}')" ondragleave="DL(event,'${f.id}')" ondrop="DP(event,'${vid}','${f.id}')">
-        ${items.length===0?'<span class="dhint">⇢ Drag pairs here to assign</span>'
-          :items.map(item=>{
-            const isI=String(item.id||'').startsWith('i_');const iid=isI?item.id:'p_'+item.id;
-            return`<div class="chip ${isI?'ich':''}">
-              <div><div class="cn1">${isI?'👤 ':''} ${x(isI?item.name:item.name1)}</div>
-              <div class="cn2">${isI?`Solo · Pair ${item.fromPair}`:x(item.name2)}</div></div>
-              <button class="crm" ${!ed?'disabled':''} onclick="unassign('${iid}','${f.id}')">✕</button>
-            </div>`;
-          }).join('')}
-      </div>
+    <div class="fdrop ${items.length===0?'emp':''}" id="fd-${f.id}">
+      ${items.length===0?'<span class="dhint">⇢ Drag pairs here to assign</span>'
+        :items.map(item=>{
+          const isI=String(item.id||'').startsWith('i_');const iid=isI?item.id:'p_'+item.id;
+          return`<div class="chip ${isI?'ich':''}">
+            <div><div class="cn1">${isI?'👤 ':''} ${x(isI?item.name:item.name1)}</div>
+            <div class="cn2">${isI?`Solo · Pair ${item.fromPair}`:x(item.name2)}</div></div>
+            <button class="crm" ${!ed?'disabled':''} onclick="unassign('${iid}','${f.id}')">✕</button>
+          </div>`;
+        }).join('')}
     </div>
   </div>`;
 }
@@ -1694,15 +1592,6 @@ function addFeeder(vid){if(!canEdit())return;if(!boardStarted)initBoard();if(!sc
 function rmFeeder(vid,fid){if(!canEdit())return;const f=schedule[vid]?.feeders.find(x=>x.id===fid);if(f?.pairs.length>0&&!confirm(`Remove feeder? ${f.pairs.length} item(s) unassigned.`))return;schedule[vid].feeders=schedule[vid].feeders.filter(x=>x.id!==fid);renderBoard();renderPairs();}
 function updFN(fid,n){Object.values(schedule).forEach(v=>{const f=v.feeders.find(x=>x.id===fid);if(f)f.name=n;});updateStats();}
 function unassign(iid,fid){Object.values(schedule).forEach(v=>v.feeders.forEach(f=>{if(f.id===fid)f.pairs=f.pairs.filter(p=>String(p)!==String(iid));}));renderBoard();renderPairs();}
-function toggleFeederCollapse(vid,fid){
-  const f=schedule[vid]?.feeders.find(x=>x.id===fid);
-  if(!f)return;
-  f.collapsed=!f.collapsed;
-  const wrap=document.getElementById('fdw-'+fid);
-  const btn=document.querySelector(`#fl-${fid} .fcollapse`);
-  if(wrap)wrap.classList.toggle('collapsed',f.collapsed);
-  if(btn)btn.classList.toggle('collapsed',f.collapsed);
-}
 function togOng(vid,fid){if(!canEdit())return;const f=schedule[vid]?.feeders.find(x=>x.id===fid);if(f)f.ongoing=!f.ongoing;renderBoard();}
 function resetAll(){if(!canEdit())return;if(!confirm('Clear all assignments?'))return;Object.values(schedule).forEach(v=>v.feeders.forEach(f=>f.pairs=[]));renderBoard();renderPairs();}
 function clearAll(){
